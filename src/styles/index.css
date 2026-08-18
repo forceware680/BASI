@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind utilities;
+
+/* shadcn/ui CSS variables */
+:root {
+  --background: 0 0% 100%;
+  --foreground: 220 10% 3%;
+  --card: 0 0% 100%;
+  --card-foreground: 220 10% 3%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 220 10% 3%;
+  --primary: 221 70% 50%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 220 10% 94%;
+  --secondary-foreground: 220 10% 3%;
+  --muted: 220 10% 94%;
+  --muted-foreground: 220 5% 40%;
+  --destructive: 0 70% 50%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 220 10% 90%;
+  --input: 220 10% 90%;
+  --ring: 221 70% 50%;
+  --radius: 0.5rem;
+  --success: 140 65% 40%;
+  --warning: 40 95% 45%;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+}

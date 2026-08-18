@@ -1,0 +1,39 @@
+/* print.css — @media print: hanya cetak lembar EkspedisiPrintSheet. */
+/*
+ * REQ-03: 1 lembar A4 portrait, hitam-putih, tanpa footer/page chrome.
+ *
+ * Strategi: React app-nya ada di #root; lembar cetak di-portalkan ke <body>
+ * (saudara #root). Saat print: sembunyikan #root (seluruh app) + toolbar dialog,
+ * netral-kan backdrop overlay, dan biarkan hanya #ekspedisi-print-sheet yang
+ * ter-render. Layout grid (info 160px/1fr + TTD 3 kolom) di-drive inline-style
+ * di komponen — inline style menang atas rule apa pun, jadi tidak perlu override.
+ */
+
+/* ===== @page: kertas A4 portrait ===== */
+@page {
+  size: A4 portrait;
+  margin: 15mm;
+}
+
+/* ===== Print mode ===== */
+@media print {
+  /* Sembunyikan seluruh UI aplikasi (#root) + tombol dialog. */
+  #root,
+  .print-toolbar {
+    display: none;
+  }
+
+  /* Netral-kan backdrop overlay: jangan jadi fixed / penutup / scroll. */
+  .print-overlay-root {
+    position: static;
+    overflow: visible;
+    background: transparent;
+  }
+
+  /* Hapus margin root; @page margin yang atur spacing kertas. */
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+  }
+}
