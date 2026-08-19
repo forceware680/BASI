@@ -230,10 +230,10 @@ export function KoreksiListPage({
       {/* Header Halaman & Tombol Aksi Cepat */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-black tracking-tight text-slate-900">
+          <h1 className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
             Pelacakan Ekspedisi BA Koreksi BMD
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             Sirkulasi Berita Acara Koreksi Barang Milik Daerah Kota Magelang
           </p>
         </div>
@@ -242,10 +242,10 @@ export function KoreksiListPage({
           <button
             type="button"
             onClick={() => refresh()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:text-indigo-600"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400"
             title="Muat ulang data"
           >
-            <RotateCw className="h-3.5 w-3.5 text-slate-500" />
+            <RotateCw className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
             <span>Segarkan</span>
           </button>
 
@@ -266,41 +266,41 @@ export function KoreksiListPage({
       {/* Dashboard KPI Ringkasan */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {/* Card 1: Total */}
-        <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50/50 to-white p-4 shadow-sm">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+        <div className="flex items-center gap-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-gradient-to-br from-slate-50/50 to-white dark:from-slate-900/60 dark:to-slate-900 p-4 shadow-sm">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400">
             <Inbox className="h-6 w-6" />
           </div>
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Total Berkas Koreksi
             </div>
-            <div className="text-2xl font-bold text-slate-900">{stats.total}</div>
+            <div className="text-2xl font-bold text-slate-900 dark:text-white">{stats.total}</div>
           </div>
         </div>
 
         {/* Card 2: Menunggu Bukti */}
-        <div className="flex items-center gap-4 rounded-xl border border-amber-200/70 bg-gradient-to-br from-amber-50/40 to-white p-4 shadow-sm">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+        <div className="flex items-center gap-4 rounded-xl border border-amber-200/70 dark:border-amber-900/40 bg-gradient-to-br from-amber-50/40 to-white dark:from-amber-950/20 dark:to-slate-900 p-4 shadow-sm">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400">
             <Clock className="h-6 w-6" />
           </div>
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-amber-700/80">
+            <div className="text-xs font-semibold uppercase tracking-wider text-amber-700/80 dark:text-amber-400/90">
               Menunggu Bukti Fisik
             </div>
-            <div className="text-2xl font-bold text-amber-900">{stats.pending}</div>
+            <div className="text-2xl font-bold text-amber-900 dark:text-amber-300">{stats.pending}</div>
           </div>
         </div>
 
         {/* Card 3: Selesai */}
-        <div className="flex items-center gap-4 rounded-xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50/40 to-white p-4 shadow-sm">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+        <div className="flex items-center gap-4 rounded-xl border border-emerald-200/70 dark:border-emerald-900/40 bg-gradient-to-br from-emerald-50/40 to-white dark:from-emerald-950/20 dark:to-slate-900 p-4 shadow-sm">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400">
             <CheckCircle2 className="h-6 w-6" />
           </div>
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-emerald-700/80">
+            <div className="text-xs font-semibold uppercase tracking-wider text-emerald-700/80 dark:text-emerald-400/90">
               Selesai & Diarsipkan
             </div>
-            <div className="text-2xl font-bold text-emerald-900">{stats.completed}</div>
+            <div className="text-2xl font-bold text-emerald-900 dark:text-emerald-300">{stats.completed}</div>
           </div>
         </div>
       </div>

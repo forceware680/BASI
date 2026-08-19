@@ -1,4 +1,4 @@
-// components/KoreksiTable.tsx — tabel utama responsif dengan compact action group & floating portal menu.
+// components/KoreksiTable.tsx — tabel utama responsif dengan compact action group, floating portal menu, dan dark mode.
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
@@ -113,11 +113,11 @@ export function KoreksiTable({
   return (
     <div className="space-y-4">
       {/* Toolbar Filter & Pencarian */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm transition-colors">
         <div className="flex flex-1 flex-col sm:flex-row items-stretch sm:items-center gap-3">
           {/* Input Search */}
           <div className="relative min-w-[240px] max-w-md flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
               value={search}
@@ -126,13 +126,13 @@ export function KoreksiTable({
                 setPage(0);
               }}
               placeholder="Cari No. BA, No. TU, OPD, uraian..."
-              className="w-full rounded-lg border border-slate-200 bg-slate-50/50 py-2 pl-9 pr-4 text-xs sm:text-sm text-slate-800 placeholder-slate-400 transition-all focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-950 py-2 pl-9 pr-4 text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 transition-all focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
             />
             {search && (
               <button
                 type="button"
                 onClick={() => setSearch("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-xs text-slate-400 hover:text-slate-600"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
               >
                 ✕
               </button>
@@ -140,7 +140,7 @@ export function KoreksiTable({
           </div>
 
           {/* Filter Status Pills */}
-          <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-1 text-xs font-medium text-slate-600 overflow-x-auto whitespace-nowrap">
+          <div className="flex items-center rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-1 text-xs font-medium text-slate-600 dark:text-slate-400 overflow-x-auto whitespace-nowrap">
             <button
               type="button"
               onClick={() => {
@@ -149,8 +149,8 @@ export function KoreksiTable({
               }}
               className={`rounded-md px-3 py-1.5 transition-colors ${
                 statusFilter === "semua"
-                  ? "bg-white font-semibold text-slate-900 shadow-sm"
-                  : "hover:text-slate-900"
+                  ? "bg-white dark:bg-slate-800 font-semibold text-slate-900 dark:text-white shadow-sm"
+                  : "hover:text-slate-900 dark:hover:text-slate-200"
               }`}
             >
               Semua ({rows.length})
@@ -163,8 +163,8 @@ export function KoreksiTable({
               }}
               className={`rounded-md px-3 py-1.5 transition-colors ${
                 statusFilter === "MENUNGGU_BUKTI"
-                  ? "bg-white font-semibold text-amber-800 shadow-sm"
-                  : "hover:text-slate-900"
+                  ? "bg-white dark:bg-slate-800 font-semibold text-amber-800 dark:text-amber-300 shadow-sm"
+                  : "hover:text-slate-900 dark:hover:text-slate-200"
               }`}
             >
               Menunggu Bukti ({rows.filter((r) => r.status === "MENUNGGU_BUKTI").length})
@@ -177,8 +177,8 @@ export function KoreksiTable({
               }}
               className={`rounded-md px-3 py-1.5 transition-colors ${
                 statusFilter === "SELESAI"
-                  ? "bg-white font-semibold text-emerald-800 shadow-sm"
-                  : "hover:text-slate-900"
+                  ? "bg-white dark:bg-slate-800 font-semibold text-emerald-800 dark:text-emerald-300 shadow-sm"
+                  : "hover:text-slate-900 dark:hover:text-slate-200"
               }`}
             >
               Selesai ({rows.filter((r) => r.status === "SELESAI").length})
@@ -187,18 +187,18 @@ export function KoreksiTable({
         </div>
 
         {/* Info Total Terfilter */}
-        <div className="text-xs text-slate-500 whitespace-nowrap text-right">
-          Menampilkan <span className="font-semibold text-slate-700">{filtered.length}</span> dari{" "}
-          <span className="font-semibold text-slate-700">{rows.length}</span> berkas
+        <div className="text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap text-right">
+          Menampilkan <span className="font-semibold text-slate-700 dark:text-slate-200">{filtered.length}</span> dari{" "}
+          <span className="font-semibold text-slate-700 dark:text-slate-200">{rows.length}</span> berkas
         </div>
       </div>
 
       {/* Tabel Kontainer Card Responsif */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm transition-colors">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/90 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">
                 <th className="px-4 py-3.5 w-36">No. BA Koreksi</th>
                 <th className="px-4 py-3.5 w-36">No. Surat TU</th>
                 <th className="px-4 py-3.5 min-w-[220px]">OPD Pengusul</th>
@@ -207,7 +207,7 @@ export function KoreksiTable({
                 <th className="px-4 py-3.5 w-36 text-center">Aksi</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
               {rowModel.rows.map((row) => {
                 const r = row.original;
                 const isUploading = uploadingId === r.id;
@@ -216,25 +216,25 @@ export function KoreksiTable({
                 return (
                   <tr
                     key={r.id}
-                    className="transition-colors hover:bg-indigo-50/30"
+                    className="transition-colors hover:bg-indigo-50/30 dark:hover:bg-slate-800/40"
                   >
                     <td className="px-4 py-3.5 whitespace-nowrap">
-                      <span className="font-mono text-xs font-bold text-indigo-950">
+                      <span className="font-mono text-xs font-bold text-indigo-950 dark:text-indigo-300">
                         {r.no_ba}
                       </span>
                     </td>
-                    <td className="px-4 py-3.5 font-mono text-xs text-slate-600 whitespace-nowrap">
+                    <td className="px-4 py-3.5 font-mono text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">
                       {r.no_tu}
                     </td>
                     <td className="px-4 py-3.5">
-                      <div className="font-medium text-slate-900 leading-snug">{r.nama_opd}</div>
+                      <div className="font-medium text-slate-900 dark:text-slate-100 leading-snug">{r.nama_opd}</div>
                       {r.penjelasan_koreksi && (
-                        <div className="max-w-md truncate text-xs text-slate-400 mt-0.5" title={r.penjelasan_koreksi}>
+                        <div className="max-w-md truncate text-xs text-slate-400 dark:text-slate-500 mt-0.5" title={r.penjelasan_koreksi}>
                           {r.penjelasan_koreksi}
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3.5 text-xs text-slate-600 whitespace-nowrap">
+                    <td className="px-4 py-3.5 text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">
                       {formatTanggal(r.tanggal_surat)}
                     </td>
                     <td className="px-4 py-3.5 whitespace-nowrap">
@@ -248,7 +248,7 @@ export function KoreksiTable({
                           type="button"
                           onClick={() => onPrint(r)}
                           title="Cetak Lembar Ekspedisi Tunggal"
-                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:bg-slate-50 hover:text-indigo-600"
+                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 shadow-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400"
                         >
                           <Printer className="h-4 w-4" />
                         </button>
@@ -273,7 +273,7 @@ export function KoreksiTable({
                             type="button"
                             onClick={() => onView(r)}
                             title="Lihat Berkas Bukti Scan"
-                            className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm transition-colors hover:bg-emerald-100"
+                            className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 shadow-sm transition-colors hover:bg-emerald-100 dark:hover:bg-emerald-900/60"
                           >
                             <Eye className="h-4 w-4" />
                           </button>
@@ -292,10 +292,10 @@ export function KoreksiTable({
                             }
                           }}
                           title="Opsi lainnya"
-                          className={`h-8 w-8 inline-flex items-center justify-center rounded-lg border text-slate-500 transition-colors shadow-sm ${
+                          className={`h-8 w-8 inline-flex items-center justify-center rounded-lg border text-slate-500 dark:text-slate-400 transition-colors shadow-sm ${
                             isMenuOpen
-                              ? "border-indigo-300 bg-indigo-50 text-indigo-700"
-                              : "border-slate-200 bg-white hover:bg-slate-50 hover:text-slate-800"
+                              ? "border-indigo-300 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300"
+                              : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-100"
                           }`}
                         >
                           <MoreHorizontal className="h-4 w-4" />
@@ -311,15 +311,15 @@ export function KoreksiTable({
                 <tr>
                   <td colSpan={6} className="py-16 text-center">
                     <div className="mx-auto flex max-w-sm flex-col items-center justify-center">
-                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400">
                         <FileQuestion className="h-7 w-7" />
                       </div>
-                      <h3 className="mt-3 text-sm font-bold text-slate-800">
+                      <h3 className="mt-3 text-sm font-bold text-slate-800 dark:text-slate-200">
                         {search || statusFilter !== "semua"
                           ? "Data Tidak Ditemukan"
                           : "Belum Ada Berkas BA Koreksi"}
                       </h3>
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                         {search || statusFilter !== "semua"
                           ? "Coba ubah kata kunci pencarian atau reset filter status."
                           : "Mulai dengan mencatat Berita Acara Koreksi BMD baru untuk mencetak tanda terima ekspedisi."}
@@ -331,7 +331,7 @@ export function KoreksiTable({
                             setSearch("");
                             setStatusFilter("semua");
                           }}
-                          className="mt-4 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          className="mt-4 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700"
                         >
                           Reset Filter
                         </button>
@@ -355,17 +355,17 @@ export function KoreksiTable({
 
         {/* Footer Pagination */}
         {filtered.length > 0 && (
-          <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50/50 px-4 py-3 text-xs text-slate-600">
+          <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 px-4 py-3 text-xs text-slate-600 dark:text-slate-400">
             <div>
-              Halaman <span className="font-semibold text-slate-800">{page + 1}</span> dari{" "}
-              <span className="font-semibold text-slate-800">{totalPage}</span>
+              Halaman <span className="font-semibold text-slate-800 dark:text-slate-200">{page + 1}</span> dari{" "}
+              <span className="font-semibold text-slate-800 dark:text-slate-200">{totalPage}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 disabled={page === 0}
                 onClick={() => setPage((p) => p - 1)}
-                className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40"
+                className="inline-flex items-center gap-1 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-slate-700 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40"
               >
                 <ChevronLeft className="h-3.5 w-3.5" />
                 Sebelumnya
@@ -374,7 +374,7 @@ export function KoreksiTable({
                 type="button"
                 disabled={!canNext}
                 onClick={() => setPage((p) => p + 1)}
-                className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40"
+                className="inline-flex items-center gap-1 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 py-1 text-slate-700 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40"
               >
                 Selanjutnya
                 <ChevronRight className="h-3.5 w-3.5" />
@@ -400,7 +400,7 @@ export function KoreksiTable({
 
             return (
               <div
-                className="fixed z-[9999] w-44 rounded-xl border border-slate-200 bg-white py-1 shadow-2xl text-left animate-in fade-in-50 zoom-in-95"
+                className="fixed z-[9999] w-44 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1 shadow-2xl text-left animate-in fade-in-50 zoom-in-95"
                 style={{ top: `${top}px`, left: `${left}px` }}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -411,9 +411,9 @@ export function KoreksiTable({
                     setMenuAnchor(null);
                     onEdit(r);
                   }}
-                  className="flex w-full items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                  className="flex w-full items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
                 >
-                  <Edit2 className="h-3.5 w-3.5 text-slate-400" />
+                  <Edit2 className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
                   <span>Edit Data</span>
                 </button>
 
@@ -426,14 +426,14 @@ export function KoreksiTable({
                       setMenuAnchor(null);
                       onUpload(r);
                     }}
-                    className="flex w-full items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                    className="flex w-full items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
                   >
-                    <FileUp className="h-3.5 w-3.5 text-slate-400" />
+                    <FileUp className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
                     <span>Ganti Bukti Scan</span>
                   </button>
                 )}
 
-                <div className="my-1 border-t border-slate-100" />
+                <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
 
                 {/* Hapus Data */}
                 <button
@@ -442,7 +442,7 @@ export function KoreksiTable({
                     setMenuAnchor(null);
                     onDelete(r);
                   }}
-                  className="flex w-full items-center gap-2 px-3.5 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
+                  className="flex w-full items-center gap-2 px-3.5 py-2 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40"
                 >
                   <Trash2 className="h-3.5 w-3.5 text-red-500" />
                   <span>Hapus Berkas</span>

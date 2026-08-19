@@ -1,4 +1,4 @@
-// components/ConfirmDeleteDialog.tsx — Modal Konfirmasi Hapus Data / Hapus Bukti Scan.
+// components/ConfirmDeleteDialog.tsx — Modal Konfirmasi Hapus Data / Hapus Bukti Scan dengan Dark Mode.
 
 import { useEffect } from "react";
 import type { KoreksiRow } from "../lib/types";
@@ -35,23 +35,23 @@ export function ConfirmDeleteDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 animate-in fade-in duration-200"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget && !loading) onClose();
       }}
     >
-      <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+      <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl transition-colors">
         {/* Header Icon */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-red-600 border border-red-100 shadow-sm">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 dark:bg-red-950/80 text-red-600 dark:text-red-400 border border-red-100 dark:border-red-900/60 shadow-sm">
               <AlertTriangle className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
                 {isRecord ? "Konfirmasi Hapus Data" : "Hapus File Bukti Scan"}
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 {isRecord
                   ? "Tindakan ini akan menghapus seluruh data berkas"
                   : "Status berkas akan kembali menjadi Menunggu Bukti"}
@@ -62,39 +62,39 @@ export function ConfirmDeleteDialog({
             type="button"
             disabled={loading}
             onClick={onClose}
-            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors disabled:opacity-50"
+            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors disabled:opacity-50"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Detail Record yang akan dihapus */}
-        <div className="my-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 space-y-2 text-xs">
+        <div className="my-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950 p-3.5 space-y-2 text-xs">
           <div className="flex justify-between">
-            <span className="text-slate-500">No. BA Koreksi:</span>
-            <span className="font-mono font-bold text-slate-900">{target.no_ba}</span>
+            <span className="text-slate-500 dark:text-slate-400">No. BA Koreksi:</span>
+            <span className="font-mono font-bold text-slate-900 dark:text-indigo-300">{target.no_ba}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-500">No. Surat TU:</span>
-            <span className="font-mono text-slate-700">{target.no_tu}</span>
+            <span className="text-slate-500 dark:text-slate-400">No. Surat TU:</span>
+            <span className="font-mono text-slate-700 dark:text-slate-300">{target.no_tu}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-500">OPD Pengusul:</span>
-            <span className="font-semibold text-slate-800 text-right max-w-[220px] truncate">
+            <span className="text-slate-500 dark:text-slate-400">OPD Pengusul:</span>
+            <span className="font-semibold text-slate-800 dark:text-slate-200 text-right max-w-[220px] truncate">
               {target.nama_opd}
             </span>
           </div>
           {!isRecord && target.file_name && (
-            <div className="flex justify-between border-t border-slate-200 pt-1.5">
-              <span className="text-slate-500">Nama File:</span>
-              <span className="font-mono text-indigo-700 text-right max-w-[200px] truncate">
+            <div className="flex justify-between border-t border-slate-200 dark:border-slate-800 pt-1.5">
+              <span className="text-slate-500 dark:text-slate-400">Nama File:</span>
+              <span className="font-mono text-indigo-700 dark:text-indigo-400 text-right max-w-[200px] truncate">
                 {target.file_name}
               </span>
             </div>
           )}
         </div>
 
-        <p className="text-xs text-slate-600 leading-relaxed mb-6">
+        <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-6">
           {isRecord
             ? "Apakah Anda yakin ingin menghapus data koreksi ini secara permanen? Jika terdapat file bukti scan, file tersebut juga akan dihapus dari penyimpanan."
             : "Apakah Anda yakin ingin menghapus file bukti scan ini? Berkas bukti fisik akan dihapus dari penyimpanan dan status tanda terima dikembalikan ke MENUNGGU BUKTI."}
@@ -106,7 +106,7 @@ export function ConfirmDeleteDialog({
             type="button"
             disabled={loading}
             onClick={onClose}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+            className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
           >
             Batal
           </button>

@@ -1,4 +1,4 @@
-// components/OpdCombobox.tsx — master data OPD (REQ-01) dengan pencarian cepat dan modal tambah OPD baru.
+// components/OpdCombobox.tsx — master data OPD (REQ-01) dengan pencarian cepat, modal tambah OPD baru, dan Dark Mode.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createOpd, listOpd } from "../lib/api";
@@ -88,25 +88,25 @@ export function OpdCombobox({
   const handleClear = () => {
     setQuery("");
     onSelect(null);
-    setOpen(true);
   };
 
-  const handleSaveOpd = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const nama = newName.trim();
-    if (!nama) {
-      setError("Nama OPD wajib diisi.");
-      return;
-    }
+  // Simpan OPD Baru ke Database
+  const handleSaveOpd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim()) return;
     setLoading(true);
     setError(null);
     try {
-      const opd = await createOpd(nama, newSingkatan.trim() || undefined);
-      setAll((prev) => [...prev, opd].sort((a, b) => a.nama_opd.localeCompare(b.nama_opd)));
-      handlePick(opd);
+      const created = await createOpd(
+        newName.trim(),
+        newSingkatan.trim() || undefined,
+      );
+      // Update state lokal
+      setAll((prev) => [...prev, created].sort((a, b) => a.nama_opd.localeCompare(b.nama_opd)));
+      handlePick(created);
+      setShowModal(false);
       setNewName("");
       setNewSingkatan("");
-      setShowModal(false);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -115,8 +115,8 @@ export function OpdCombobox({
   };
 
   return (
-    <div ref={containerRef} className="relative">
-      <div className="flex items-center gap-1.5">
+    <div ref={containerRef} className="relative w-full">
+      <div className="flex items-center gap-2">
         {/* Input Combobox */}
         <div className="relative flex-1">
           <input
@@ -138,7 +138,7 @@ export function OpdCombobox({
               if (!e.target.value) onSelect(null);
             }}
             placeholder="Ketik untuk mencari nama OPD..."
-            className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-16 text-xs sm:text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-50 shadow-sm"
+            className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 py-2 pl-3 pr-16 text-xs sm:text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-50 dark:disabled:bg-slate-900 shadow-sm transition-colors"
           />
 
           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -146,7 +146,7 @@ export function OpdCombobox({
               <button
                 type="button"
                 onClick={handleClear}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded"
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded"
                 title="Hapus pilihan"
               >
                 <X className="h-3.5 w-3.5" />
@@ -156,7 +156,7 @@ export function OpdCombobox({
               type="button"
               disabled={disabled}
               onClick={() => setOpen((prev) => !prev)}
-              className="p-1 text-slate-400 hover:text-slate-600 rounded"
+              className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded"
               title="Buka daftar"
             >
               <ChevronDown className="h-3.5 w-3.5" />
@@ -164,7 +164,7 @@ export function OpdCombobox({
           </div>
         </div>
 
-        {/* Tombol Tambah OPD Baru (hanya 1 simbol plus) */}
+        {/* Tombol Tambah OPD Baru */}
         <button
           type="button"
           disabled={disabled}
@@ -175,7 +175,7 @@ export function OpdCombobox({
             setShowModal(true);
             setOpen(false);
           }}
-          className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors whitespace-nowrap shadow-sm"
+          className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/70 px-2.5 py-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 transition-colors whitespace-nowrap shadow-sm"
           title="Tambah Master OPD Baru ke Database"
         >
           <Plus className="h-3.5 w-3.5" />
@@ -185,7 +185,7 @@ export function OpdCombobox({
 
       {/* Dropdown Options List */}
       {open && (
-        <ul className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-slate-200 bg-white py-1.5 shadow-xl text-xs sm:text-sm">
+        <ul className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 py-1.5 shadow-xl text-xs sm:text-sm">
           {filtered.map((opd) => {
             const isSelected = opd.id === selectedId;
             return (
@@ -197,19 +197,19 @@ export function OpdCombobox({
                 }}
                 className={`cursor-pointer px-3.5 py-2.5 transition-colors ${
                   isSelected
-                    ? "bg-indigo-50 font-semibold text-indigo-900"
-                    : "hover:bg-slate-50 text-slate-800"
+                    ? "bg-indigo-50 dark:bg-indigo-950/80 font-semibold text-indigo-900 dark:text-indigo-200"
+                    : "hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200"
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <span className="leading-snug">{opd.nama_opd}</span>
                   <div className="flex items-center gap-2">
                     {opd.singkatan && (
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-mono text-slate-600">
+                      <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-mono text-slate-600 dark:text-slate-400">
                         {opd.singkatan}
                       </span>
                     )}
-                    {isSelected && <Check className="h-4 w-4 text-indigo-600" />}
+                    {isSelected && <Check className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />}
                   </div>
                 </div>
               </li>
@@ -217,7 +217,7 @@ export function OpdCombobox({
           })}
 
           {filtered.length === 0 && (
-            <li className="px-3.5 py-3 text-xs text-slate-500 text-center italic">
+            <li className="px-3.5 py-3 text-xs text-slate-500 dark:text-slate-400 text-center italic">
               Tidak ada OPD dengan nama "{query}"
             </li>
           )}
@@ -232,7 +232,7 @@ export function OpdCombobox({
               setShowModal(true);
               setOpen(false);
             }}
-            className="border-t border-slate-100 bg-indigo-50/50 px-3.5 py-2.5 text-xs font-semibold text-indigo-600 hover:bg-indigo-100 cursor-pointer flex items-center gap-1.5"
+            className="border-t border-slate-100 dark:border-slate-800 bg-indigo-50/50 dark:bg-indigo-950/40 px-3.5 py-2.5 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 cursor-pointer flex items-center gap-1.5"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>Tambah OPD Baru {query.trim() ? `"${query.trim()}"` : ""}</span>
@@ -243,40 +243,40 @@ export function OpdCombobox({
       {/* Modal Dialog Tambah OPD Baru */}
       {showModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 animate-in fade-in duration-200"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget && !loading) setShowModal(false);
           }}
         >
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl transition-colors">
+            <div className="mb-4 flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400">
                   <Building2 className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Tambah Master OPD Baru</h3>
-                  <p className="text-[11px] text-slate-500">Daftarkan instansi / OPD pengusul baru</p>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Tambah Master OPD Baru</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Daftarkan instansi / OPD pengusul baru</p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowModal(false)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             {error && (
-              <div className="mb-3 rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-700">
+              <div className="mb-3 rounded-lg border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/50 p-2.5 text-xs text-red-700 dark:text-red-300">
                 {error}
               </div>
             )}
 
             <form onSubmit={handleSaveOpd} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Nama Lengkap OPD <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -284,31 +284,31 @@ export function OpdCombobox({
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="Contoh: Dinas Pekerjaan Umum dan Penataan Ruang"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs sm:text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                   autoFocus
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Singkatan OPD <span className="text-slate-400 font-normal">(Opsional)</span>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Singkatan OPD <span className="text-slate-400 dark:text-slate-500 font-normal">(Opsional)</span>
                 </label>
                 <input
                   type="text"
                   value={newSingkatan}
                   onChange={(e) => setNewSingkatan(e.target.value)}
                   placeholder="Contoh: DPUPR"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs sm:text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
                 />
               </div>
 
-              <div className="mt-5 flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+              <div className="mt-5 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-3">
                 <button
                   type="button"
                   disabled={loading}
                   onClick={() => setShowModal(false)}
-                  className="rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3.5 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
                 >
                   Batal
                 </button>

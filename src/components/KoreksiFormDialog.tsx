@@ -1,4 +1,4 @@
-// components/KoreksiFormDialog.tsx — form tambah/edit koreksi (REQ-02) dengan auto-format nomor surat dinas.
+// components/KoreksiFormDialog.tsx — form tambah/edit koreksi (REQ-02) dengan auto-format nomor surat dinas dan Dark Mode.
 
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
@@ -31,13 +31,13 @@ const EMPTY: Fields = {
 };
 
 const inputCls =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm";
+  "w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs sm:text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm transition-colors";
 
 const btnPrimary =
   "rounded-lg bg-indigo-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors shadow-sm";
 
 const btnSecondary =
-  "rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs sm:text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors";
+  "rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors";
 
 /**
  * Format otomatis template nomor dinas: 000.2.3.2/[tengah]/440
@@ -80,8 +80,8 @@ export function KoreksiFormDialog({
   const [noBaWarning, setNoBaWarning] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // Prefill saat dialog buka (mode edit); reset saat create.
   useEffect(() => {
+    if (!open) return;
     if (open === "edit" && initial) {
       setFields({
         no_tu: initial.no_tu,
@@ -90,103 +90,79 @@ export function KoreksiFormDialog({
         tanggal_surat: initial.tanggal_surat,
         penjelasan_koreksi: initial.penjelasan_koreksi,
       });
-    } else if (open === "create") {
+    } else {
       setFields(EMPTY);
     }
     setErrors({});
     setNoBaWarning(null);
   }, [open, initial]);
 
-  // Listener tombol Escape
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
+  if (!open) return null;
 
-  if (open === null) return null;
+  const update = (patch: Partial<Fields>) =>
+    setFields((prev) => ({ ...prev, ...patch }));
 
-  const update = (patch: Partial<Fields>) => {
-    setFields((f) => ({ ...f, ...patch }));
-    setErrors((prev) => {
-      const next = { ...prev };
-      Object.keys(patch).forEach((k) => delete next[k]);
-      return next;
-    });
-  };
-
-  // Handler auto format saat kehilangan fokus (Blur / Tab)
+  // Auto-format saat No TU blur / tab
   const handleBlurNoTu = () => {
-    if (fields.no_tu.trim()) {
+    if (fields.no_tu) {
       const formatted = autoFormatNomor(fields.no_tu);
-      update({ no_tu: formatted });
+      if (formatted !== fields.no_tu) {
+        update({ no_tu: formatted });
+      }
     }
   };
 
-  const handleBlurNoBa = () => {
-    if (fields.no_ba.trim()) {
+  // Auto-format saat No BA blur / tab + cek warning duplikat
+  const handleBlurNoBa = async () => {
+    if (fields.no_ba) {
       const formatted = autoFormatNomor(fields.no_ba);
-      update({ no_ba: formatted });
-      handleCheckNoBaDuplicate(formatted);
-    } else {
-      setNoBaWarning(null);
-    }
-  };
-
-  // Cek duplikat no_ba
-  const handleCheckNoBaDuplicate = async (noBaValue?: string) => {
-    const target = noBaValue ?? fields.no_ba.trim();
-    if (!target) {
-      setNoBaWarning(null);
-      return;
-    }
-    try {
-      const dup = await isNoBaUsed(target, initial?.id ?? undefined);
-      if (dup) {
-        setNoBaWarning(`Perhatian: No. BA "${target}" sudah pernah digunakan pada data lain.`);
+      if (formatted !== fields.no_ba) {
+        update({ no_ba: formatted });
+      }
+      const raw = formatted || fields.no_ba;
+      const exclude = open === "edit" && initial ? initial.id : undefined;
+      const used = await isNoBaUsed(raw, exclude).catch(() => false);
+      if (used) {
+        setNoBaWarning(`Peringatan: No. BA "${raw}" sudah pernah dicatat sebelumnya.`);
       } else {
         setNoBaWarning(null);
       }
-    } catch {
-      // Abaikan jika error jaringan/DB saat live check
     }
   };
 
-  const validate = () => {
-    const e: Record<string, string> = {};
-    if (!fields.no_tu.trim()) e.no_tu = "No. Surat TU wajib diisi.";
-    if (!fields.no_ba.trim()) e.no_ba = "No. BA Koreksi wajib diisi.";
-    if (fields.opd_id == null) e.opd_id = "OPD Pengusul wajib diisi.";
-    if (!fields.tanggal_surat.trim()) {
-      e.tanggal_surat = "Tanggal Surat wajib diisi.";
-    } else if (fields.tanggal_surat > todayIso()) {
-      e.tanggal_surat = "Tanggal surat tidak boleh melebihi hari ini.";
+  const validate = (): boolean => {
+    const errs: Record<string, string> = {};
+    if (!fields.no_tu.trim()) errs.no_tu = "No. Surat TU wajib diisi.";
+    if (!fields.no_ba.trim()) errs.no_ba = "No. BA Koreksi wajib diisi.";
+    if (!fields.opd_id) errs.opd_id = "Pilih OPD pengusul.";
+    if (!fields.tanggal_surat) errs.tanggal_surat = "Tanggal surat wajib diisi.";
+    if (fields.tanggal_surat > todayIso()) {
+      errs.tanggal_surat = "Tanggal tidak boleh di masa depan.";
     }
-    if (!fields.penjelasan_koreksi.trim()) e.penjelasan_koreksi = "Uraian Koreksi wajib diisi.";
-    return e;
+    if (!fields.penjelasan_koreksi.trim()) {
+      errs.penjelasan_koreksi = "Uraian penjelasan koreksi wajib diisi.";
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
   };
 
-  const submit = async (printAfter: boolean) => {
-    const e = validate();
-    setErrors(e);
-    if (Object.keys(e).length > 0) return;
+  const submit = async (printAfter = false) => {
+    if (!validate()) return;
     setSaving(true);
     try {
-      const payload = {
-        no_tu: autoFormatNomor(fields.no_tu),
-        no_ba: autoFormatNomor(fields.no_ba),
-        opd_id: fields.opd_id as number,
+      const dto = {
+        no_tu: fields.no_tu.trim(),
+        no_ba: fields.no_ba.trim(),
+        opd_id: fields.opd_id!,
         tanggal_surat: fields.tanggal_surat,
         penjelasan_koreksi: fields.penjelasan_koreksi.trim(),
       };
-      const row =
-        open === "edit" && initial
-          ? await updateKoreksi(initial.id, payload)
-          : await createKoreksi(payload);
-
+      let row: KoreksiRow;
+      if (open === "edit" && initial) {
+        row = await updateKoreksi(initial.id, dto);
+      } else {
+        row = await createKoreksi(dto);
+      }
       onSaved(row);
       if (printAfter) onPrint(row);
     } catch (err) {
@@ -198,27 +174,27 @@ export function KoreksiFormDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 animate-in fade-in duration-200"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
-        <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3">
-          <h2 className="text-base font-bold text-slate-900">
+      <div className="w-full max-w-lg rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl transition-colors">
+        <div className="mb-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+          <h2 className="text-base font-bold text-slate-900 dark:text-white">
             {open === "edit" ? "Edit Koreksi BMD" : "Tambah Koreksi BMD"}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+            className="rounded p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
           >
             ✕
           </button>
         </div>
 
         {errors._form && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+          <div className="mb-4 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 dark:bg-red-950/50 p-3 text-xs text-red-700 dark:text-red-300">
             {errors._form}
           </div>
         )}
@@ -244,7 +220,7 @@ export function KoreksiFormDialog({
                 <button
                   type="button"
                   onClick={handleBlurNoTu}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 rounded bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 rounded bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 border border-indigo-200 dark:border-indigo-800"
                   title="Format ke 000.2.3.2/[nomor]/440"
                 >
                   <Sparkles className="h-3 w-3" />
@@ -274,7 +250,7 @@ export function KoreksiFormDialog({
                 <button
                   type="button"
                   onClick={handleBlurNoBa}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 rounded bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 rounded bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/80 border border-indigo-200 dark:border-indigo-800"
                   title="Format ke 000.2.3.2/[nomor]/440"
                 >
                   <Sparkles className="h-3 w-3" />
@@ -283,7 +259,7 @@ export function KoreksiFormDialog({
               )}
             </div>
             {noBaWarning && (
-              <p className="mt-1 rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 border border-amber-200">
+              <p className="mt-1 rounded-lg bg-amber-50 dark:bg-amber-950/50 px-2.5 py-1 text-xs font-medium text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60">
                 {noBaWarning}
               </p>
             )}
@@ -317,7 +293,7 @@ export function KoreksiFormDialog({
           </Field>
         </div>
 
-        <div className="mt-5 flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
+        <div className="mt-5 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800 pt-4">
           <button type="button" onClick={onClose} className={btnSecondary}>
             Batal
           </button>
@@ -357,19 +333,19 @@ function Field({
   return (
     <div>
       <div className="mb-1 flex items-center gap-1.5">
-        <span className="block text-xs font-bold text-slate-700">{label}</span>
+        <span className="block text-xs font-bold text-slate-700 dark:text-slate-300">{label}</span>
         {hint && (
           <div className="group relative inline-flex items-center">
-            <Info className="h-3.5 w-3.5 text-slate-400 hover:text-indigo-600 cursor-help transition-colors" />
-            <div className="pointer-events-none absolute bottom-full left-0 mb-1.5 w-64 rounded-lg bg-slate-900 px-3 py-2 text-[11px] font-medium text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity z-50 leading-relaxed">
+            <Info className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 cursor-help transition-colors" />
+            <div className="pointer-events-none absolute bottom-full left-0 mb-1.5 w-64 rounded-lg bg-slate-900 dark:bg-slate-800 px-3 py-2 text-[11px] font-medium text-white shadow-xl opacity-0 group-hover:opacity-100 transition-opacity z-50 leading-relaxed border border-slate-700">
               {hint}
-              <div className="absolute top-full left-2 border-4 border-transparent border-t-slate-900" />
+              <div className="absolute top-full left-2 border-4 border-transparent border-t-slate-900 dark:border-t-slate-800" />
             </div>
           </div>
         )}
       </div>
       {children}
-      {error && <span className="mt-1 block text-xs font-semibold text-red-600">{error}</span>}
+      {error && <span className="mt-1 block text-xs font-semibold text-red-600 dark:text-red-400">{error}</span>}
     </div>
   );
 }
