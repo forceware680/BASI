@@ -1,6 +1,6 @@
 // pages/KoreksiListPage.tsx — halaman utama daftar koreksi BMD dengan dialog konfirmasi hapus dan hapus bukti.
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   listKoreksi,
   deleteKoreksi,
@@ -99,65 +99,68 @@ export function KoreksiListPage({
     }
   }, [onRowsLoaded]);
 
+  const stateRef = useRef({
+    formOpen,
+    deleteModalOpen: deleteModal.open,
+    viewRow: Boolean(viewRow),
+    printRow: Boolean(printRow),
+    handleManualRefresh,
+  });
+
+  useEffect(() => {
+    stateRef.current = {
+      formOpen,
+      deleteModalOpen: deleteModal.open,
+      viewRow: Boolean(viewRow),
+      printRow: Boolean(printRow),
+      handleManualRefresh,
+    };
+  });
+
   // Hotkeys Global:
   // - F5: Segarkan data
   // - Numpad + / '+' : Buka modal Tambah Koreksi Baru (saat tidak fokus di input teks)
-  // - Escape: Tutup modal aktif
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const {
+        formOpen: currentFormOpen,
+        deleteModalOpen,
+        viewRow: currentViewRow,
+        printRow: currentPrintRow,
+        handleManualRefresh: refreshFn,
+      } = stateRef.current;
+
       // 1. F5 -> Segarkan
       if (e.key === "F5") {
         e.preventDefault();
-        handleManualRefresh();
+        refreshFn();
         return;
       }
 
-      // 2. Escape -> Tutup modal jika ada yang terbuka
-      if (e.key === "Escape") {
-        if (deleteModal.open) {
-          e.preventDefault();
-          setDeleteModal({ open: false, target: null, mode: "record", loading: false });
-          return;
-        }
-        if (viewRow) {
-          e.preventDefault();
-          setViewRow(null);
-          return;
-        }
-        if (printRow) {
-          e.preventDefault();
-          setPrintRow(null);
-          return;
-        }
-        if (formOpen) {
-          e.preventDefault();
-          setFormOpen(null);
-          setEditRow(null);
-          return;
-        }
-      }
-
-      // 3. Numpad '+' atau '+' -> Buka Tambah Koreksi Baru (jika tidak sedang mengetik di input/textarea dan tidak ada modal aktif)
-      const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      // 2. Numpad '+' atau '+' -> Buka Tambah Koreksi Baru (jika tidak sedang mengetik di input/textarea dan tidak ada modal aktif)
+      const target = e.target as HTMLElement | null;
+      const targetTag = target?.tagName?.toLowerCase();
       const isInput =
         targetTag === "input" ||
         targetTag === "textarea" ||
         targetTag === "select" ||
-        (e.target as HTMLElement)?.isContentEditable;
+        Boolean(target?.isContentEditable);
 
       const isPlusKey = e.code === "NumpadAdd" || e.key === "+";
-      const noModalOpen = !formOpen && !deleteModal.open && !viewRow && !printRow;
+      const hasModalActive = Boolean(
+        currentFormOpen || deleteModalOpen || currentViewRow || currentPrintRow
+      );
 
-      if (isPlusKey && !isInput && noModalOpen && !e.ctrlKey && !e.altKey && !e.metaKey) {
+      if (isPlusKey && !isInput && !hasModalActive && !e.ctrlKey && !e.altKey && !e.metaKey) {
         e.preventDefault();
         setEditRow(null);
         setFormOpen("create");
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleManualRefresh, formOpen, deleteModal.open, viewRow, printRow]);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, []);
 
   // Statistik Ringkasan (KPI)
   const stats = useMemo(() => {
@@ -313,19 +316,16 @@ export function KoreksiListPage({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             disabled={isRefreshing}
             onClick={handleManualRefresh}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-75"
-            title="Muat ulang data dari database (F5)"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 sm:px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-75"
+            title="Segarkan data dari database"
           >
-            <RotateCw className={`h-3.5 w-3.5 text-slate-500 dark:text-slate-400 transition-transform ${isRefreshing ? "animate-spin text-indigo-600 dark:text-indigo-400" : ""}`} />
-            <span>{isRefreshing ? "Menyegarkan…" : "Segarkan"}</span>
-            <kbd className="hidden sm:inline-block rounded bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 text-[11px] font-mono text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600">
-              F5
-            </kbd>
+            <RotateCw className={`h-3.5 w-3.5 text-slate-500 dark:text-slate-400 transition-transform shrink-0 ${isRefreshing ? "animate-spin text-indigo-600 dark:text-indigo-400" : ""}`} />
+            <span className="hidden xs:inline sm:inline">{isRefreshing ? "Menyegarkan…" : "Segarkan"}</span>
           </button>
 
           <button
@@ -334,14 +334,11 @@ export function KoreksiListPage({
               setEditRow(null);
               setFormOpen("create");
             }}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-md transition-all hover:bg-indigo-700 hover:shadow"
-            title="Tambah Berkas Koreksi Baru (Numpad +)"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 sm:px-4 py-2 text-xs font-semibold text-white shadow-md transition-all hover:bg-indigo-700 hover:shadow"
+            title="Tambah Berkas Koreksi Baru"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4 shrink-0" />
             <span>Tambah Koreksi Baru</span>
-            <kbd className="hidden sm:inline-block rounded bg-indigo-700/80 px-1.5 py-0.5 text-[11px] font-mono text-indigo-100 border border-indigo-500/50 font-bold">
-              +
-            </kbd>
           </button>
         </div>
       </div>

@@ -1,6 +1,4 @@
-// components/KoreksiFormDialog.tsx — form tambah/edit koreksi (REQ-02) dengan auto-format nomor surat dinas dan Dark Mode.
-
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   createKoreksi,
@@ -23,13 +21,15 @@ type Fields = {
   penjelasan_koreksi: string;
 };
 
-const EMPTY: Fields = {
-  no_tu: "",
-  no_ba: "",
-  opd_id: null,
-  tanggal_surat: todayIso(),
-  penjelasan_koreksi: "",
-};
+function getEmptyFields(): Fields {
+  return {
+    no_tu: "",
+    no_ba: "",
+    opd_id: null,
+    tanggal_surat: todayIso(),
+    penjelasan_koreksi: "",
+  };
+}
 
 const inputCls =
   "w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-xs sm:text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm transition-colors";
@@ -71,7 +71,7 @@ export function KoreksiFormDialog({
   onSaved: (row: KoreksiRow) => void;
   onPrint: (row: KoreksiRow) => void;
 }) {
-  const [fields, setFields] = useState<Fields>(EMPTY);
+  const [fields, setFields] = useState<Fields>(getEmptyFields);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
@@ -86,12 +86,10 @@ export function KoreksiFormDialog({
         penjelasan_koreksi: initial.penjelasan_koreksi,
       });
     } else {
-      setFields(EMPTY);
+      setFields(getEmptyFields());
     }
     setErrors({});
   }, [open, initial]);
-
-  if (!open) return null;
 
   const update = (patch: Partial<Fields>) =>
     setFields((prev) => ({ ...prev, ...patch }));
@@ -211,6 +209,11 @@ export function KoreksiFormDialog({
     }
   };
 
+  const submitRef = useRef(submit);
+  useEffect(() => {
+    submitRef.current = submit;
+  });
+
   // Hotkeys Modal:
   // - Escape: Tutup modal
   // - Ctrl+S / Cmd+S: Simpan
@@ -220,21 +223,25 @@ export function KoreksiFormDialog({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
+        e.stopPropagation();
         onClose();
         return;
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
         e.preventDefault();
+        e.stopPropagation();
         if (e.shiftKey) {
-          submit(true);
+          submitRef.current(true);
         } else {
-          submit(false);
+          submitRef.current(false);
         }
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, fields, onClose]);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [open, onClose]);
+
+  if (!open) return null;
 
   return (
     <div
@@ -353,35 +360,24 @@ export function KoreksiFormDialog({
         </div>
 
         <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800 pt-4">
-          <button type="button" onClick={onClose} className={btnSecondary} title="Batal & Tutup (Esc)">
-            <span>Batal</span>
-            <kbd className="ml-1.5 rounded bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 text-[11px] font-mono text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600">
-              Esc
-            </kbd>
+          <button type="button" onClick={onClose} className={btnSecondary}>
+            Batal
           </button>
           <button
             type="button"
             disabled={saving}
             onClick={() => submit(false)}
             className={btnPrimary}
-            title="Simpan Data (Ctrl+S)"
           >
-            <span>{saving ? "Menyimpan…" : "Simpan"}</span>
-            <kbd className="ml-1.5 rounded bg-indigo-700/80 px-1.5 py-0.5 text-[11px] font-mono text-indigo-100 border border-indigo-500/50">
-              Ctrl+S
-            </kbd>
+            {saving ? "Menyimpan…" : "Simpan"}
           </button>
           <button
             type="button"
             disabled={saving}
             onClick={() => submit(true)}
-            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-sm"
-            title="Simpan Data & Buka Pratinjau Cetak (Ctrl+Shift+S)"
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-sm"
           >
-            <span>{saving ? "Menyimpan…" : "Simpan & Cetak"}</span>
-            <kbd className="ml-1 rounded bg-emerald-700/80 px-1.5 py-0.5 text-[11px] font-mono text-emerald-100 border border-emerald-500/50">
-              Ctrl+Shift+S
-            </kbd>
+            {saving ? "Menyimpan…" : "Simpan & Cetak"}
           </button>
         </div>
       </div>
