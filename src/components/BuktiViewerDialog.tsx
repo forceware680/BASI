@@ -96,7 +96,7 @@ export function BuktiViewerDialog({
                 <h2 className="text-base font-bold text-slate-900 dark:text-white">
                   Pratinjau Bukti Tanda Terima
                 </h2>
-                <span className="rounded bg-emerald-100 dark:bg-emerald-950/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                <span className="rounded bg-emerald-100 dark:bg-emerald-950/80 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                   SELESAI
                 </span>
               </div>

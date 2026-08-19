@@ -1,0 +1,9 @@
+{
+  "buildPath": "code",
+  "detector": {
+    "enabled": true,
+    "designSystem": {
+      "enabled": true
+    }
+  }
+}

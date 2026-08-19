@@ -205,7 +205,7 @@ export function OpdCombobox({
                   <span className="leading-snug">{opd.nama_opd}</span>
                   <div className="flex items-center gap-2">
                     {opd.singkatan && (
-                      <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[10px] font-mono text-slate-600 dark:text-slate-400">
+                      <span className="rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-[11px] font-mono text-slate-600 dark:text-slate-400">
                         {opd.singkatan}
                       </span>
                     )}

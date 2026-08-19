@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-19T13:40:00.000Z",
+  "title": "Design System: SIMBASI BMD",
+  "extensions": {
+    "colorMeta": {
+      "primary": { "role": "primary", "displayName": "Gov Indigo", "canonical": "#4f46e5", "tonalRamp": ["#312e81", "#3730a3", "#4338ca", "#4f46e5", "#6366f1", "#818cf8", "#c7d2fe", "#eef2ff"] },
+      "neutral-bg": { "role": "neutral", "displayName": "Slate Deep Canvas", "canonical": "#f8fafc", "tonalRamp": ["#020617", "#0f172a", "#1e293b", "#334155", "#64748b", "#cbd5e1", "#f1f5f9", "#f8fafc"] },
+      "success": { "role": "accent", "displayName": "Verified Emerald", "canonical": "#059669", "tonalRamp": ["#064e3b", "#065f46", "#047857", "#059669", "#10b981", "#34d399", "#a7f3d0", "#ecfdf5"] },
+      "warning": { "role": "accent", "displayName": "Pending Amber", "canonical": "#d97706", "tonalRamp": ["#78350f", "#92400e", "#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fde68a", "#fffbeb"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Header aplikasi dan identitas dinas." },
+      "headline": { "displayName": "Headline", "purpose": "Judul modal dialog dan seksi utama." },
+      "body": { "displayName": "Body", "purpose": "Teks isi tabel berkas dan deskripsi." }
+    },
+    "shadows": [
+      { "name": "subtle", "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)", "purpose": "Elevasi default pada kartu dan tombol." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Transisi tema dan hover interaktif." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Action Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Tombol aksi utama untuk tambah berkas dan simpan.",
+      "html": "<button class=\"ds-btn-primary\">+ Tambah Koreksi Baru</button>",
+      "css": ".ds-btn-primary { background: #4f46e5; color: #ffffff; padding: 8px 16px; font-size: 13px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: background 0.15s ease; font-family: system-ui, sans-serif; } .ds-btn-primary:hover { background: #4338ca; }"
+    },
+    {
+      "name": "Status Badge Selesai",
+      "kind": "chip",
+      "refersTo": "chip-status-selesai",
+      "description": "Badge status berkas yang telah lengkap diunggah bukti fisiknya.",
+      "html": "<span class=\"ds-badge-selesai\"><span class=\"ds-dot-selesai\"></span>SELESAI</span>",
+      "css": ".ds-badge-selesai { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 9999px; background: #ecfdf5; border: 1px solid #a7f3d0; color: #047857; font-size: 11px; font-weight: 600; font-family: system-ui, sans-serif; } .ds-dot-selesai { width: 6px; height: 6px; border-radius: 9999px; background: #10b981; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Aparatur Presisi & Keteraturan Arsip",
+    "overview": "SIMBASI BMD adalah instrumen kerja desktop resmi Pemerintah Kota Magelang. Antarmuka mengutamakan keterbacaan data berkas berdensitas tinggi, kontras yang tajam, tata letak yang stabil, dan hierarki informasi yang teratur.",
+    "keyCharacteristics": [
+      "Tipografi Segoe UI Variable yang bersih dan terintegrasi mulus dengan desktop Windows.",
+      "Palet warna fungsional: aksen Gov Indigo dengan status Verified Emerald dan Pending Amber.",
+      "Struktur permukaan padat dan terdefinisi dengan border subtil tanpa efek blur dekoratif berlebihan."
+    ],
+    "rules": [
+      { "name": "The Purposeful Accent Rule", "body": "Warna aksen primer digunakan secara hemat pada ≤10% area layar agar perhatian pengguna terpusat pada baris data.", "section": "colors" },
+      { "name": "The Readable Scale Rule", "body": "Seluruh teks fungsional memiliki ukuran minimal 11px untuk menjamin keterbacaan pada layar resolusi tinggi.", "section": "typography" },
+      { "name": "The Clean Surface Rule", "body": "Tidak menggunakan efek kaca buram yang berlebihan; kontras visual dicapai melalui pemisahan warna permukaan dan border 1px.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do gunakan format tanggal dinas Indonesia (dd MMMM yyyy) yang konsisten.",
+      "Do pertahankan kontras rasio minimal 4.5:1 untuk semua teks fungsional.",
+      "Do sertakan konfirmasi eksplisit sebelum tindakan penghapusan berkas fisik."
+    ],
+    "donts": [
+      "Don't gunakan gradien ungu-biru neon (purple gradient slop) pada elemen UI.",
+      "Don't gunakan font generik AI yang overused ketika sistem font Windows asli lebih presisi.",
+      "Don't gunakan border aksen tebal 4px pada satu sisi kartu (side-tab card tell).",
+      "Don't gunakan ukuran teks fungsional di bawah 11px."
+    ]
+  }
+}

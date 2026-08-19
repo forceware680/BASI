@@ -61,7 +61,7 @@ export default function App() {
                 <h1 className="text-base font-bold tracking-tight text-slate-900 dark:text-white">
                   SIMBASI BMD
                 </h1>
-                <span className="rounded bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 text-[10px] font-bold text-indigo-700 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 uppercase tracking-wider">
+                <span className="rounded bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-800 uppercase tracking-wider">
                   Kota Magelang
                 </span>
               </div>
@@ -136,7 +136,7 @@ export default function App() {
               </span>
               {dbInfo && (
                 <span
-                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                  className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider ${
                     dbInfo.mode === "Portable"
                       ? "bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80"
                       : "bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80"
