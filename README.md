@@ -77,6 +77,12 @@ Aplikasi memiliki manajemen database otomatis:
 * **Cadangan & Pemulihan (Backup & Restore)**: Backup penuh seluruh database PostgreSQL dan berkas fisik bukti scan menjadi 1 file `.zip`.
 * **Dark Mode**: Antarmuka adaptif tema terang / gelap dengan palet warna nyaman mata.
 * **Console Monitor**: Toggle jendela CMD di header untuk memantau log aktivitas database dan proses aplikasi secara langsung.
+* **Pintasan Keyboard Cepat (Hotkeys)**:
+  * <kbd>+</kbd> (Numpad Plus): Membuka form Tambah Koreksi Baru secara instan.
+  * <kbd>F5</kbd>: Menyegarkan data tabel dari database.
+  * <kbd>Ctrl</kbd> + <kbd>S</kbd>: Menyimpan formulir koreksi.
+  * <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd>: Menyimpan formulir koreksi dan langsung membuka dialog cetak tanda terima.
+  * <kbd>Esc</kbd>: Menutup modal / dialog aktif.
 
 ---
 

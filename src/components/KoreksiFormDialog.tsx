@@ -211,6 +211,31 @@ export function KoreksiFormDialog({
     }
   };
 
+  // Hotkeys Modal:
+  // - Escape: Tutup modal
+  // - Ctrl+S / Cmd+S: Simpan
+  // - Ctrl+Shift+S / Cmd+Shift+S: Simpan & Cetak
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        if (e.shiftKey) {
+          submit(true);
+        } else {
+          submit(false);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, fields, onClose]);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4 animate-in fade-in duration-200"
@@ -327,25 +352,36 @@ export function KoreksiFormDialog({
           </Field>
         </div>
 
-        <div className="mt-5 flex items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800 pt-4">
-          <button type="button" onClick={onClose} className={btnSecondary}>
-            Batal
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 dark:border-slate-800 pt-4">
+          <button type="button" onClick={onClose} className={btnSecondary} title="Batal & Tutup (Esc)">
+            <span>Batal</span>
+            <kbd className="ml-1.5 rounded bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 text-[11px] font-mono text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600">
+              Esc
+            </kbd>
           </button>
           <button
             type="button"
             disabled={saving}
             onClick={() => submit(false)}
             className={btnPrimary}
+            title="Simpan Data (Ctrl+S)"
           >
-            {saving ? "Menyimpan…" : "Simpan"}
+            <span>{saving ? "Menyimpan…" : "Simpan"}</span>
+            <kbd className="ml-1.5 rounded bg-indigo-700/80 px-1.5 py-0.5 text-[11px] font-mono text-indigo-100 border border-indigo-500/50">
+              Ctrl+S
+            </kbd>
           </button>
           <button
             type="button"
             disabled={saving}
             onClick={() => submit(true)}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-sm"
+            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-4 py-2 text-xs sm:text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors shadow-sm"
+            title="Simpan Data & Buka Pratinjau Cetak (Ctrl+Shift+S)"
           >
-            {saving ? "Menyimpan…" : "Simpan & Cetak"}
+            <span>{saving ? "Menyimpan…" : "Simpan & Cetak"}</span>
+            <kbd className="ml-1 rounded bg-emerald-700/80 px-1.5 py-0.5 text-[11px] font-mono text-emerald-100 border border-emerald-500/50">
+              Ctrl+Shift+S
+            </kbd>
           </button>
         </div>
       </div>
