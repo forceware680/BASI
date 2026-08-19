@@ -1,17 +1,19 @@
-// App.tsx — Layout Utama SIM-BA Koreksi BMD dengan Logo Pemkot Magelang.
+// App.tsx — Layout Utama SIMBASI BMD dengan Logo Pemkot Magelang dan toggle konsol debug.
 
 import { useState } from "react";
 import { KoreksiListPage } from "./pages/KoreksiListPage";
 import logoKotaMagelang from "./assets/logo-kota-magelang.png";
-import { Database, FileSpreadsheet, Archive } from "lucide-react";
+import { Database, FileSpreadsheet, Archive, Terminal } from "lucide-react";
 import { BackupRestoreDialog } from "./components/BackupRestoreDialog";
 import { EksporLaporanDialog } from "./components/EksporLaporanDialog";
 import { RekapitulasiPrintSheet } from "./components/print/RekapitulasiPrintSheet";
 import type { KoreksiRow } from "./lib/types";
+import { toggleConsole } from "./lib/api";
 
 export default function App() {
   const [backupOpen, setBackupOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [consoleVisible, setConsoleVisible] = useState(false);
   const [reportPrint, setReportPrint] = useState<{
     rows: KoreksiRow[];
     dateFrom: string;
@@ -23,6 +25,16 @@ export default function App() {
   // Trigger reload data saat restore berhasil
   const [refreshKey, setRefreshKey] = useState(0);
   const [allRows, setAllRows] = useState<KoreksiRow[]>([]);
+
+  const handleToggleConsole = async () => {
+    const next = !consoleVisible;
+    try {
+      await toggleConsole(next);
+      setConsoleVisible(next);
+    } catch {
+      // Abaikan jika non-windows
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800 antialiased">
@@ -50,7 +62,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             {/* Tombol Ekspor Laporan */}
             <button
               type="button"
@@ -58,7 +70,7 @@ export default function App() {
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-indigo-600 transition-colors"
             >
               <FileSpreadsheet className="h-4 w-4 text-indigo-600" />
-              Ekspor Laporan
+              <span>Ekspor Laporan</span>
             </button>
 
             {/* Tombol Backup & Restore */}
@@ -68,7 +80,22 @@ export default function App() {
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 hover:text-indigo-600 transition-colors"
             >
               <Archive className="h-4 w-4 text-indigo-600" />
-              Cadangan Data
+              <span>Cadangan Data</span>
+            </button>
+
+            {/* Tombol Toggle Konsol CMD */}
+            <button
+              type="button"
+              onClick={handleToggleConsole}
+              title={consoleVisible ? "Sembunyikan Jendela CMD" : "Tampilkan Jendela CMD untuk debug"}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold transition-colors shadow-sm ${
+                consoleVisible
+                  ? "border-slate-800 bg-slate-900 text-white"
+                  : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+              }`}
+            >
+              <Terminal className="h-4 w-4" />
+              <span className="hidden md:inline">CMD</span>
             </button>
 
             {/* Status Database */}
@@ -113,7 +140,7 @@ export default function App() {
         onRestored={() => setRefreshKey((k) => k + 1)}
       />
 
-      {/* Lembar Cetak Rekapitulasi Laporan */}
+      {/* Lembar Cetak Rekapitulasi Laporan Periode */}
       {reportPrint && (
         <RekapitulasiPrintSheet
           rows={reportPrint.rows}

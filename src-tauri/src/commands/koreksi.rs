@@ -99,6 +99,7 @@ pub async fn create_koreksi(
     .fetch_one(db)
     .await
     .map_err(db_err)?;
+    println!("[KOREKSI] Berhasil menambahkan BA Koreksi baru: '{}' (TU: '{}')", payload.no_ba, payload.no_tu);
     get_koreksi(db, &id).await
 }
 
@@ -125,6 +126,7 @@ pub async fn update_koreksi(
     .execute(db)
     .await
     .map_err(db_err)?;
+    println!("[KOREKSI] Berhasil memperbarui data BA Koreksi: '{}'", payload.no_ba);
     get_koreksi(db, &id).await
 }
 
@@ -139,6 +141,7 @@ pub async fn delete_koreksi(db: &PgPool, id: String) -> Result<(), String> {
         .execute(db)
         .await
         .map_err(db_err)?;
+    println!("[KOREKSI] Berhasil menghapus permanen data BA Koreksi: '{}'", row.no_ba);
     Ok(())
 }
 

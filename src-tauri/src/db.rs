@@ -1,7 +1,4 @@
 // db.rs — koneksi PostgreSQL + auto-create database & migrasi idempoten saat startup.
-//
-// Koneksi dari `DATABASE_URL` (fallback local). Jika database belum ada, dibuat otomatis
-// di PostgreSQL lokal, kemudian migrasi `0001_init.sql` dijalankan idempoten tiap boot.
 
 use sqlx::postgres::PgConnectOptions;
 use sqlx::{Connection, PgConnection};
@@ -20,18 +17,23 @@ async fn ensure_database_exists(db_url: &str) -> Result<(), String> {
         .map_err(|e| format!("URL database tidak valid: {e}"))?;
     
     let target_db = opts.get_database().unwrap_or("sim_ba_koreksi").to_string();
+    println!("[DB] Memeriksa ketersediaan database '{}' di port {}...", target_db, opts.get_port());
 
     // 1. Coba koneksi langsung ke target database
     if let Ok(conn) = PgConnection::connect_with(&opts).await {
         let _ = conn.close().await;
+        println!("[DB] Database '{}' terhubung dengan baik.", target_db);
         return Ok(());
     }
+
+    println!("[DB] Database '{}' belum ditemukan. Menyambung ke server PostgreSQL utama...", target_db);
 
     // 2. Jika gagal karena DB belum dibuat, sambungkan ke database maintenance 'postgres'
     let root_opts = opts.clone().database("postgres");
     let mut root_conn = match PgConnection::connect_with(&root_opts).await {
         Ok(c) => c,
         Err(e) => {
+            eprintln!("[DB ERROR] Gagal menyambung ke server PostgreSQL: {e}");
             return Err(format!(
                 "Gagal menyambung ke server PostgreSQL lokal. Pastikan layanan PostgreSQL sedang berjalan di port {}. ({e})",
                 opts.get_port()
@@ -50,11 +52,16 @@ async fn ensure_database_exists(db_url: &str) -> Result<(), String> {
 
     // 4. Jika belum ada, buat database baru
     if !exists {
+        println!("[DB] Membuat database baru: '{}'...", target_db);
         let query = format!("CREATE DATABASE \"{}\"", target_db.replace('"', "\"\""));
         sqlx::query(&query)
             .execute(&mut root_conn)
             .await
-            .map_err(|e| format!("Gagal membuat database '{target_db}'. ({e})"))?;
+            .map_err(|e| {
+                eprintln!("[DB ERROR] Gagal membuat database: {e}");
+                format!("Gagal membuat database '{target_db}'. ({e})")
+            })?;
+        println!("[DB] Database '{}' berhasil dibuat otomatis.", target_db);
     }
 
     let _ = root_conn.close().await;
@@ -68,16 +75,24 @@ pub async fn connect() -> Result<DbPool, String> {
     // Pastikan database ada sebelum membuat pool
     ensure_database_exists(&url).await?;
 
+    println!("[DB] Menginisialisasi Connection Pool ke PostgreSQL...");
     let pool = sqlx::PgPool::connect(&url)
         .await
-        .map_err(|e| format!("Tidak dapat terhubung ke database. ({e})"))?;
+        .map_err(|e| {
+            eprintln!("[DB ERROR] Gagal inisialisasi pool: {e}");
+            format!("Tidak dapat terhubung ke database. ({e})")
+        })?;
 
     // sqlx::migrate! embeds the SQL at compile time and expands to a Migrator struct
-    // literal. .run(&pool) applies it. Idempotent.
+    println!("[DB] Menjalankan migrasi skema SQLx idempoten...");
     sqlx::migrate!("./migrations")
         .run(&pool)
         .await
-        .map_err(|e| format!("Gagal menjalankan migrasi database. ({e})"))?;
+        .map_err(|e| {
+            eprintln!("[DB ERROR] Gagal migrasi: {e}");
+            format!("Gagal menjalankan migrasi database. ({e})")
+        })?;
 
+    println!("[DB] Migrasi skema selesai. Semua tabel & seeder OPD siap.");
     Ok(pool)
 }

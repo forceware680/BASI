@@ -1,6 +1,7 @@
-// components/KoreksiTable.tsx — tabel utama responsif dengan compact action group & contextual menu.
+// components/KoreksiTable.tsx — tabel utama responsif dengan compact action group & floating portal menu.
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   useReactTable,
   getCoreRowModel,
@@ -58,17 +59,25 @@ export function KoreksiTable({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"semua" | StatusTandaTerima>("semua");
   const [page, setPage] = useState(0);
-  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  
+  // State floating menu anchored via DOM coordinates & portal
+  const [menuAnchor, setMenuAnchor] = useState<{
+    id: string;
+    rect: DOMRect;
+    row: KoreksiRow;
+  } | null>(null);
 
-  // Tutup dropdown menu baris saat klik di luar
+  // Tutup menu saat klik di luar, scroll, atau resize
   useEffect(() => {
-    const handleDocClick = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest(".row-action-menu")) {
-        setActiveMenuId(null);
-      }
+    const handleDismiss = () => setMenuAnchor(null);
+    window.addEventListener("click", handleDismiss);
+    window.addEventListener("scroll", handleDismiss, true);
+    window.addEventListener("resize", handleDismiss);
+    return () => {
+      window.removeEventListener("click", handleDismiss);
+      window.removeEventListener("scroll", handleDismiss, true);
+      window.removeEventListener("resize", handleDismiss);
     };
-    document.addEventListener("mousedown", handleDocClick);
-    return () => document.removeEventListener("mousedown", handleDocClick);
   }, []);
 
   const filtered = useMemo(() => {
@@ -195,14 +204,14 @@ export function KoreksiTable({
                 <th className="px-4 py-3.5 min-w-[220px]">OPD Pengusul</th>
                 <th className="px-4 py-3.5 w-32">Tanggal Surat</th>
                 <th className="px-4 py-3.5 w-36">Status</th>
-                <th className="px-4 py-3.5 w-44 text-right">Aksi</th>
+                <th className="px-4 py-3.5 w-36 text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {rowModel.rows.map((row) => {
                 const r = row.original;
                 const isUploading = uploadingId === r.id;
-                const isMenuOpen = activeMenuId === r.id;
+                const isMenuOpen = menuAnchor?.id === r.id;
 
                 return (
                   <tr
@@ -231,112 +240,66 @@ export function KoreksiTable({
                     <td className="px-4 py-3.5 whitespace-nowrap">
                       <StatusBadge status={r.status} />
                     </td>
-                    <td className="px-4 py-3.5 text-right whitespace-nowrap">
-                      {/* Compact Action Group */}
-                      <div className="inline-flex items-center justify-end gap-1.5">
-                        {/* Tombol Cetak (Aksi Primer Universal) */}
+                    <td className="px-4 py-3.5 text-center whitespace-nowrap">
+                      {/* Compact Icon-Only Action Group */}
+                      <div className="inline-flex items-center justify-center gap-1.5">
+                        {/* Tombol Cetak (Icon Only) */}
                         <button
                           type="button"
                           onClick={() => onPrint(r)}
                           title="Cetak Lembar Ekspedisi Tunggal"
-                          className="h-8 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:text-indigo-600"
+                          className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:bg-slate-50 hover:text-indigo-600"
                         >
-                          <Printer className="h-3.5 w-3.5" />
-                          <span>Cetak</span>
+                          <Printer className="h-4 w-4" />
                         </button>
 
-                        {/* Tombol Kontekstual Status: Upload Bukti vs Lihat Bukti */}
+                        {/* Tombol Kontekstual Status: Upload Bukti vs Lihat Bukti (Icon Only) */}
                         {r.status === "MENUNGGU_BUKTI" ? (
                           <button
                             type="button"
                             disabled={isUploading}
                             onClick={() => onUpload(r)}
-                            title="Unggah scan tanda terima ekspedisi"
-                            className="h-8 inline-flex items-center gap-1.5 rounded-lg border border-indigo-600 bg-indigo-600 px-3 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-50"
+                            title="Unggah Scan Tanda Terima Ekspedisi"
+                            className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-indigo-600 bg-indigo-600 text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-50"
                           >
                             {isUploading ? (
-                              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                              <RefreshCw className="h-4 w-4 animate-spin" />
                             ) : (
-                              <Upload className="h-3.5 w-3.5" />
+                              <Upload className="h-4 w-4" />
                             )}
-                            <span>{isUploading ? "Mengunggah…" : "Upload Bukti"}</span>
                           </button>
                         ) : (
                           <button
                             type="button"
                             onClick={() => onView(r)}
-                            title="Lihat File Bukti Scan"
-                            className="h-8 inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 shadow-sm transition-colors hover:bg-emerald-100"
+                            title="Lihat Berkas Bukti Scan"
+                            className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 shadow-sm transition-colors hover:bg-emerald-100"
                           >
-                            <Eye className="h-3.5 w-3.5" />
-                            <span>Lihat Bukti</span>
+                            <Eye className="h-4 w-4" />
                           </button>
                         )}
 
-                        {/* Dropdown Menu Opsi Tambahan (•••) */}
-                        <div className="relative row-action-menu">
-                          <button
-                            type="button"
-                            onClick={() => setActiveMenuId(isMenuOpen ? null : r.id)}
-                            title="Opsi lainnya"
-                            className={`h-8 w-8 inline-flex items-center justify-center rounded-lg border text-slate-500 transition-colors shadow-sm ${
-                              isMenuOpen
-                                ? "border-indigo-300 bg-indigo-50 text-indigo-700"
-                                : "border-slate-200 bg-white hover:bg-slate-50 hover:text-slate-800"
-                            }`}
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </button>
-
-                          {/* Popup Menu */}
-                          {isMenuOpen && (
-                            <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-xl border border-slate-200 bg-white py-1 shadow-xl text-left animate-in fade-in-50 zoom-in-95">
-                              {/* Edit Data */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActiveMenuId(null);
-                                  onEdit(r);
-                                }}
-                                className="flex w-full items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
-                              >
-                                <Edit2 className="h-3.5 w-3.5 text-slate-400" />
-                                <span>Edit Data</span>
-                              </button>
-
-                              {/* Ganti Bukti (Jika status SELESAI) */}
-                              {r.status === "SELESAI" && (
-                                <button
-                                  type="button"
-                                  disabled={isUploading}
-                                  onClick={() => {
-                                    setActiveMenuId(null);
-                                    onUpload(r);
-                                  }}
-                                  className="flex w-full items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
-                                >
-                                  <FileUp className="h-3.5 w-3.5 text-slate-400" />
-                                  <span>Ganti Bukti Scan</span>
-                                </button>
-                              )}
-
-                              <div className="my-1 border-t border-slate-100" />
-
-                              {/* Hapus Data */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActiveMenuId(null);
-                                  onDelete(r);
-                                }}
-                                className="flex w-full items-center gap-2 px-3.5 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
-                              >
-                                <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                                <span>Hapus Berkas</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                        {/* Tombol Trigger Opsi Lainnya (•••) */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (isMenuOpen) {
+                              setMenuAnchor(null);
+                            } else {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              setMenuAnchor({ id: r.id, rect, row: r });
+                            }
+                          }}
+                          title="Opsi lainnya"
+                          className={`h-8 w-8 inline-flex items-center justify-center rounded-lg border text-slate-500 transition-colors shadow-sm ${
+                            isMenuOpen
+                              ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                              : "border-slate-200 bg-white hover:bg-slate-50 hover:text-slate-800"
+                          }`}
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -420,6 +383,75 @@ export function KoreksiTable({
           </div>
         )}
       </div>
+
+      {/* Floating Action Menu (React Portal - Anti Terpotong Tabel) */}
+      {menuAnchor &&
+        createPortal(
+          (() => {
+            const menuHeight = 140; // perkiraan tinggi popup menu
+            const openUpwards = menuAnchor.rect.bottom + menuHeight > window.innerHeight;
+            const top = openUpwards
+              ? menuAnchor.rect.top - menuHeight - 4
+              : menuAnchor.rect.bottom + 4;
+            const left = Math.max(8, menuAnchor.rect.right - 176); // 176px = w-44
+
+            const r = menuAnchor.row;
+            const isUploading = uploadingId === r.id;
+
+            return (
+              <div
+                className="fixed z-[9999] w-44 rounded-xl border border-slate-200 bg-white py-1 shadow-2xl text-left animate-in fade-in-50 zoom-in-95"
+                style={{ top: `${top}px`, left: `${left}px` }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Edit Data */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuAnchor(null);
+                    onEdit(r);
+                  }}
+                  className="flex w-full items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                >
+                  <Edit2 className="h-3.5 w-3.5 text-slate-400" />
+                  <span>Edit Data</span>
+                </button>
+
+                {/* Ganti Bukti (Jika status SELESAI) */}
+                {r.status === "SELESAI" && (
+                  <button
+                    type="button"
+                    disabled={isUploading}
+                    onClick={() => {
+                      setMenuAnchor(null);
+                      onUpload(r);
+                    }}
+                    className="flex w-full items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                  >
+                    <FileUp className="h-3.5 w-3.5 text-slate-400" />
+                    <span>Ganti Bukti Scan</span>
+                  </button>
+                )}
+
+                <div className="my-1 border-t border-slate-100" />
+
+                {/* Hapus Data */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuAnchor(null);
+                    onDelete(r);
+                  }}
+                  className="flex w-full items-center gap-2 px-3.5 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                  <span>Hapus Berkas</span>
+                </button>
+              </div>
+            );
+          })(),
+          document.body
+        )}
     </div>
   );
 }

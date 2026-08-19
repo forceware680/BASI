@@ -74,6 +74,7 @@ pub async fn upload_bukti(
     .execute(db)
     .await
     .map_err(db_err)?;
+    println!("[BUKTI] Berhasil mengunggah file bukti: '{}' (ID: {}). Status menjadi SELESAI.", file_name, id);
     crate::commands::koreksi::get_koreksi(db, &id).await
 }
 
@@ -123,6 +124,7 @@ pub async fn delete_bukti(db: &PgPool, id: String) -> Result<KoreksiRow, String>
     .await
     .map_err(db_err)?;
 
+    println!("[BUKTI] Berhasil menghapus file bukti (ID: {}). Status dikembalikan ke MENUNGGU_BUKTI.", id);
     crate::commands::koreksi::get_koreksi(db, &id).await
 }
 

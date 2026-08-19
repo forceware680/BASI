@@ -1,5 +1,6 @@
-// main.rs — SIM-BA Koreksi BMD (Tauri v2).
+// main.rs — SIMBASI BMD (Tauri v2).
 
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(dead_code)]
 #![allow(deprecated)]
 
@@ -10,6 +11,29 @@ mod storage;
 
 use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
+
+#[cfg(windows)]
+extern "system" {
+    fn GetConsoleWindow() -> isize;
+    fn ShowWindow(hWnd: isize, nCmdShow: i32) -> i32;
+    fn AllocConsole() -> i32;
+}
+
+#[tauri::command]
+fn toggle_console(show: bool) -> Result<bool, String> {
+    #[cfg(windows)]
+    unsafe {
+        let hwnd = GetConsoleWindow();
+        if hwnd == 0 {
+            if show {
+                AllocConsole();
+            }
+        } else {
+            ShowWindow(hwnd, if show { 5 /* SW_SHOW */ } else { 0 /* SW_HIDE */ });
+        }
+    }
+    Ok(show)
+}
 
 #[tauri::command]
 async fn list_opd(db: tauri::State<'_, crate::db::DbPool>, search: Option<String>) -> Result<Vec<crate::models::Opd>, String> {
@@ -95,6 +119,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_log::Builder::new().level(tauri_plugin_log::log::LevelFilter::Info).build())
         .invoke_handler(tauri::generate_handler![
+            toggle_console,
             list_opd,
             create_opd,
             list_koreksi,
@@ -112,9 +137,25 @@ pub fn run() {
             restore_backup,
         ])
         .setup(|app| {
-            // Koneksi DB + migrasi idempoten (T-10: auto-connect saat restart).
+            println!("============================================================");
+            println!("  SIMBASI BMD — Subid Penatausahaan Aset BPKAD");
+            println!("  Pemerintah Kota Magelang");
+            println!("  Console Log & Activity Monitor Aktif");
+            println!("============================================================");
+
+            // Sembunyikan console window CMD saat startup Windows secara default
+            #[cfg(windows)]
+            unsafe {
+                let hwnd = GetConsoleWindow();
+                if hwnd != 0 {
+                    ShowWindow(hwnd, 0 /* SW_HIDE */);
+                }
+            }
+
+            // Koneksi DB + auto-create database & migrasi idempoten saat startup
             let pool = tauri::async_runtime::block_on(crate::db::connect())
                 .expect("Tidak dapat terhubung ke database. Periksa layanan PostgreSQL.");
+            println!("[APP] Inisialisasi aplikasi selesai. Siap melayani permintaan.");
             app.manage(pool);
             Ok(())
         })

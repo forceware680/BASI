@@ -7,6 +7,10 @@ import type {
   Opd,
 } from "./types";
 
+export async function toggleConsole(show: boolean): Promise<boolean> {
+  return invoke("toggle_console", { show });
+}
+
 export async function listOpd(
   search?: string,
 ): Promise<Opd[]> {
