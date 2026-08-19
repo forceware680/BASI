@@ -1,4 +1,4 @@
-// main.rs — SIMBASI BMD (Tauri v2) dengan integrasi Portable PostgreSQL auto-managed.
+// main.rs — SIMBASI BMD (Tauri v2) dengan integrasi Portable PostgreSQL auto-managed & status info.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(dead_code)]
@@ -16,6 +16,14 @@ use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
 
 pub struct PortableDbState(pub Mutex<Option<PathBuf>>);
+
+#[derive(serde::Serialize)]
+pub struct DbInfo {
+    pub mode: String, // "Portable" | "Standalone"
+    pub host: String,
+    pub port: u16,
+    pub database: String,
+}
 
 #[cfg(windows)]
 extern "system" {
@@ -38,6 +46,18 @@ fn toggle_console(show: bool) -> Result<bool, String> {
         }
     }
     Ok(show)
+}
+
+#[tauri::command]
+fn get_db_info(state: tauri::State<'_, PortableDbState>) -> Result<DbInfo, String> {
+    let guard = state.0.lock().map_err(|e| e.to_string())?;
+    let is_portable = guard.is_some();
+    Ok(DbInfo {
+        mode: if is_portable { "Portable".to_string() } else { "Standalone".to_string() },
+        host: "127.0.0.1".to_string(),
+        port: 5432,
+        database: "sim_ba_koreksi".to_string(),
+    })
 }
 
 #[tauri::command]
@@ -125,6 +145,7 @@ pub fn run() {
         .plugin(tauri_plugin_log::Builder::new().level(tauri_plugin_log::log::LevelFilter::Info).build())
         .invoke_handler(tauri::generate_handler![
             toggle_console,
+            get_db_info,
             list_opd,
             create_opd,
             list_koreksi,

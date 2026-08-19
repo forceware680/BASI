@@ -16,6 +16,15 @@ export function EkspedisiPrintSheet({
 }) {
   const printed = useRef(false);
 
+  // Shortcut Escape untuk tutup
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
   useEffect(() => {
     if (printed.current) return;
     printed.current = true;
@@ -28,18 +37,23 @@ export function EkspedisiPrintSheet({
   if (!row) return null;
 
   return createPortal(
-    <div className="print-overlay-root fixed inset-0 z-50 overflow-auto bg-slate-900/60 backdrop-blur-sm">
+    <div
+      className="print-overlay-root fixed inset-0 z-50 overflow-auto bg-slate-900/70 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div className="mx-auto my-6 w-fit">
         {/* Toolbar dialog */}
-        <div className="print-toolbar mb-3 flex items-center justify-between rounded-xl bg-white p-3 shadow-lg">
-          <span className="text-xs font-semibold text-slate-700">
-            Pratinjau Lembar Ekspedisi: <span className="font-mono text-indigo-600">{row.no_ba}</span>
+        <div className="print-toolbar mb-3 flex items-center justify-between rounded-xl bg-white dark:bg-slate-800 p-3 shadow-lg border border-slate-200 dark:border-slate-700">
+          <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+            Pratinjau Lembar Ekspedisi: <span className="font-mono text-indigo-600 dark:text-indigo-400">{row.no_ba}</span>
           </span>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors shadow-sm cursor-pointer"
             >
               <X className="h-3.5 w-3.5" />
               Tutup
@@ -47,7 +61,7 @@ export function EkspedisiPrintSheet({
             <button
               type="button"
               onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 shadow-sm transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 shadow-sm transition-colors cursor-pointer"
             >
               <Printer className="h-3.5 w-3.5" />
               Cetak Sekarang
@@ -55,10 +69,10 @@ export function EkspedisiPrintSheet({
           </div>
         </div>
 
-        {/* Lembar Cetak Dinas */}
+        {/* Lembar Cetak Dinas (Selalu Kertas Putih) */}
         <div
           id="ekspedisi-print-sheet"
-          className="w-[210mm] max-w-full bg-white p-8 text-black shadow-2xl font-serif text-[11pt] leading-normal"
+          className="w-[210mm] max-w-full bg-white p-8 text-black shadow-2xl font-serif text-[11pt] leading-normal rounded-sm"
           style={{ boxSizing: "border-box" }}
         >
           {/* KOP DINAS RESMI PEMKOT MAGELANG */}

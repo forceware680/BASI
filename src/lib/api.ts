@@ -7,8 +7,19 @@ import type {
   Opd,
 } from "./types";
 
+export type DbInfo = {
+  mode: "Portable" | "Standalone";
+  host: string;
+  port: number;
+  database: string;
+};
+
 export async function toggleConsole(show: boolean): Promise<boolean> {
   return invoke("toggle_console", { show });
+}
+
+export async function getDbInfo(): Promise<DbInfo> {
+  return invoke("get_db_info");
 }
 
 export async function listOpd(

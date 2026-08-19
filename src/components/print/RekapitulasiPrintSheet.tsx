@@ -14,15 +14,27 @@ export function RekapitulasiPrintSheet({
   statusLabel,
   opdLabel,
   onClose,
+  onAfterPrint,
 }: {
   rows: KoreksiRow[];
   dateFrom: string;
   dateTo: string;
   statusLabel: string;
   opdLabel: string;
-  onClose: () => void;
+  onClose?: () => void;
+  onAfterPrint?: () => void;
 }) {
   const printed = useRef(false);
+  const handleClose = onClose || onAfterPrint || (() => {});
+
+  // Shortcut Escape untuk tutup
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleClose();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [handleClose]);
 
   useEffect(() => {
     if (printed.current) return;
@@ -34,18 +46,23 @@ export function RekapitulasiPrintSheet({
   }, []);
 
   return createPortal(
-    <div className="print-overlay-root fixed inset-0 z-50 overflow-auto bg-slate-900/60 backdrop-blur-sm">
+    <div
+      className="print-overlay-root fixed inset-0 z-50 overflow-auto bg-slate-900/70 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) handleClose();
+      }}
+    >
       <div className="mx-auto my-6 w-fit">
         {/* Toolbar Cetak */}
-        <div className="print-toolbar mb-3 flex items-center justify-between rounded-xl bg-white p-3 shadow-lg">
-          <span className="text-xs font-semibold text-slate-700">
+        <div className="print-toolbar mb-3 flex items-center justify-between rounded-xl bg-white dark:bg-slate-800 p-3 shadow-lg border border-slate-200 dark:border-slate-700">
+          <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
             Pratinjau Laporan Rekapitulasi ({rows.length} berkas)
           </span>
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={onClose}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+              onClick={handleClose}
+              className="inline-flex items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors shadow-sm cursor-pointer"
             >
               <X className="h-3.5 w-3.5" />
               Tutup
@@ -53,7 +70,7 @@ export function RekapitulasiPrintSheet({
             <button
               type="button"
               onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 shadow-sm transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 shadow-sm transition-colors cursor-pointer"
             >
               <Printer className="h-3.5 w-3.5" />
               Cetak Laporan
@@ -61,10 +78,10 @@ export function RekapitulasiPrintSheet({
           </div>
         </div>
 
-        {/* Halaman Cetak Rekapitulasi */}
+        {/* Halaman Cetak Rekapitulasi (Selalu Kertas Putih) */}
         <div
           id="rekapitulasi-print-sheet"
-          className="w-[297mm] min-h-[210mm] bg-white p-8 text-black shadow-2xl font-serif text-[10pt] leading-normal"
+          className="w-[297mm] min-h-[210mm] bg-white p-8 text-black shadow-2xl font-serif text-[10pt] leading-normal rounded-sm"
           style={{ boxSizing: "border-box" }}
         >
           {/* KOP RESMI PEMKOT MAGELANG */}
