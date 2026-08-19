@@ -102,13 +102,35 @@ async fn upload_bukti(app: tauri::AppHandle, db: tauri::State<'_, crate::db::DbP
 }
 
 #[tauri::command]
+async fn pick_to_staging() -> Result<Option<crate::commands::bukti::StagedFile>, String> {
+    Ok(crate::commands::bukti::pick_to_staging().await?)
+}
+
+#[tauri::command]
+async fn scan_to_staging(
+    options: Option<crate::commands::bukti::ScanOptions>,
+) -> Result<Option<crate::commands::bukti::StagedFile>, String> {
+    Ok(crate::commands::bukti::scan_to_staging(options).await?)
+}
+
+#[tauri::command]
 async fn pick_and_upload_bukti(app: tauri::AppHandle, db: tauri::State<'_, crate::db::DbPool>, id: String) -> Result<Option<crate::models::KoreksiRow>, String> {
     Ok(crate::commands::bukti::pick_and_upload_bukti(app, &db, id).await?)
 }
 
 #[tauri::command]
-async fn scan_and_upload_bukti(app: tauri::AppHandle, db: tauri::State<'_, crate::db::DbPool>, id: String) -> Result<Option<crate::models::KoreksiRow>, String> {
-    Ok(crate::commands::bukti::scan_and_upload_bukti(app, &db, id).await?)
+async fn list_scanners() -> Result<Vec<crate::commands::bukti::ScannerDeviceInfo>, String> {
+    Ok(crate::commands::bukti::list_scanners().await?)
+}
+
+#[tauri::command]
+async fn scan_and_upload_bukti(
+    app: tauri::AppHandle,
+    db: tauri::State<'_, crate::db::DbPool>,
+    id: String,
+    options: Option<crate::commands::bukti::ScanOptions>,
+) -> Result<Option<crate::models::KoreksiRow>, String> {
+    Ok(crate::commands::bukti::scan_and_upload_bukti(app, &db, id, options).await?)
 }
 
 #[tauri::command]
@@ -164,7 +186,10 @@ pub fn run() {
             update_koreksi,
             delete_koreksi,
             upload_bukti,
+            pick_to_staging,
+            scan_to_staging,
             pick_and_upload_bukti,
+            list_scanners,
             scan_and_upload_bukti,
             delete_bukti,
             get_bukti_base64,

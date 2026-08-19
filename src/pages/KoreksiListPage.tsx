@@ -1,13 +1,11 @@
-// pages/KoreksiListPage.tsx — halaman utama daftar koreksi BMD dengan dialog konfirmasi hapus dan hapus bukti.
-
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   listKoreksi,
   deleteKoreksi,
-  pickAndUploadBukti,
-  scanAndUploadBukti,
+  uploadBukti,
   deleteBukti,
 } from "../lib/api";
+import type { StagedFile } from "../lib/api";
 import type { KoreksiRow } from "../lib/types";
 import { KoreksiTable } from "../components/KoreksiTable";
 import { KoreksiFormDialog } from "../components/KoreksiFormDialog";
@@ -32,7 +30,7 @@ export function KoreksiListPage({
   const [rows, setRows] = useState<KoreksiRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ message: string; success: boolean } | null>(null);
+  const [toast, setToast] = useState<{ message: string; success?: boolean } | null>(null);
 
   // Modals state
   const [formOpen, setFormOpen] = useState<"create" | "edit" | null>(null);
@@ -40,8 +38,6 @@ export function KoreksiListPage({
   const [printRow, setPrintRow] = useState<KoreksiRow | null>(null);
   const [viewRow, setViewRow] = useState<KoreksiRow | null>(null);
   const [uploadModalRow, setUploadModalRow] = useState<KoreksiRow | null>(null);
-  const [uploadLoading, setUploadLoading] = useState(false);
-  const [uploadLoadingMsg, setUploadLoadingMsg] = useState("");
   const [uploading, setUploading] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -185,48 +181,22 @@ export function KoreksiListPage({
     setUploadModalRow(row);
   };
 
-  // 1. Upload via File Explorer (PDF / JPG / PNG)
-  const handleUploadFromExplorer = async (row: KoreksiRow) => {
+  // Konfirmasi Penggunaan Berkas Staging (File Explorer / Scanner)
+  const handleCommitUpload = async (row: KoreksiRow, staged: StagedFile) => {
     setUploading(row.id);
     try {
-      const updated = await pickAndUploadBukti(row.id);
-      if (updated) {
-        setRows((prev: KoreksiRow[]) => {
-          const next = prev.map((r: KoreksiRow) => (r.id === updated.id ? updated : r));
-          onRowsLoaded?.(next);
-          return next;
-        });
-        setUploadModalRow(null);
-        showToast(`Bukti ${row.no_ba} berhasil diunggah. Status berkas menjadi SELESAI.`);
-      }
+      const updated = await uploadBukti(row.id, staged.source_path);
+      setRows((prev: KoreksiRow[]) => {
+        const next = prev.map((r: KoreksiRow) => (r.id === updated.id ? updated : r));
+        onRowsLoaded?.(next);
+        return next;
+      });
+      setUploadModalRow(null);
+      showToast(`Berkas bukti ${row.no_ba} berhasil disimpan. Status berkas menjadi SELESAI.`);
     } catch (e) {
       showToast(String(e), false);
+      throw e;
     } finally {
-      setUploading(null);
-    }
-  };
-
-  // 2. Upload langsung dari Mesin Scanner (WIA)
-  const handleUploadFromScanner = async (row: KoreksiRow) => {
-    setUploadLoading(true);
-    setUploadLoadingMsg("Sedang membuka antarmuka scanner Windows...");
-    setUploading(row.id);
-    try {
-      const updated = await scanAndUploadBukti(row.id);
-      if (updated) {
-        setRows((prev: KoreksiRow[]) => {
-          const next = prev.map((r: KoreksiRow) => (r.id === updated.id ? updated : r));
-          onRowsLoaded?.(next);
-          return next;
-        });
-        setUploadModalRow(null);
-        showToast(`Hasil scan ${row.no_ba} berhasil disimpan. Status berkas menjadi SELESAI.`);
-      }
-    } catch (e) {
-      showToast(String(e), false);
-    } finally {
-      setUploadLoading(false);
-      setUploadLoadingMsg("");
       setUploading(null);
     }
   };
@@ -382,49 +352,52 @@ export function KoreksiListPage({
         </div>
       </div>
 
-      {/* Dashboard KPI Ringkasan */}
+      {/* Hero Stats */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {/* Card 1: Total */}
-        <div className="flex items-center gap-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-gradient-to-br from-slate-50/50 to-white dark:from-slate-900/60 dark:to-slate-900 p-4 shadow-sm">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400">
-            <Inbox className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              Total Berkas Koreksi
+        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/60 backdrop-blur-sm p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Total Berkas
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/60 shadow-sm">
+              <Inbox className="h-4 w-4" />
             </div>
-            <div className="text-2xl font-bold text-slate-900 dark:text-white">{stats.total}</div>
           </div>
+          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">
+            {stats.total}
+          </p>
         </div>
 
-        {/* Card 2: Menunggu Bukti */}
-        <div className="flex items-center gap-4 rounded-xl border border-amber-200/70 dark:border-amber-900/40 bg-gradient-to-br from-amber-50/40 to-white dark:from-amber-950/20 dark:to-slate-900 p-4 shadow-sm">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400">
-            <Clock className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-amber-700/80 dark:text-amber-400/90">
-              Menunggu Bukti Fisik
+        <div className="rounded-2xl border border-amber-200/80 dark:border-amber-900/60 bg-amber-50/40 dark:bg-amber-950/20 backdrop-blur-sm p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+              Menunggu Bukti
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 shadow-sm">
+              <Clock className="h-4 w-4" />
             </div>
-            <div className="text-2xl font-bold text-amber-900 dark:text-amber-300">{stats.pending}</div>
           </div>
+          <p className="mt-2 text-2xl font-black text-amber-900 dark:text-amber-200">
+            {stats.pending}
+          </p>
         </div>
 
-        {/* Card 3: Selesai */}
-        <div className="flex items-center gap-4 rounded-xl border border-emerald-200/70 dark:border-emerald-900/40 bg-gradient-to-br from-emerald-50/40 to-white dark:from-emerald-950/20 dark:to-slate-900 p-4 shadow-sm">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400">
-            <CheckCircle2 className="h-6 w-6" />
-          </div>
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-emerald-700/80 dark:text-emerald-400/90">
-              Selesai & Diarsipkan
+        <div className="rounded-2xl border border-emerald-200/80 dark:border-emerald-900/60 bg-emerald-50/40 dark:bg-emerald-950/20 backdrop-blur-sm p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+              Selesai (Diunggah)
+            </span>
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 shadow-sm">
+              <CheckCircle2 className="h-4 w-4" />
             </div>
-            <div className="text-2xl font-bold text-emerald-900 dark:text-emerald-300">{stats.completed}</div>
           </div>
+          <p className="mt-2 text-2xl font-black text-emerald-900 dark:text-emerald-200">
+            {stats.completed}
+          </p>
         </div>
       </div>
 
-      {/* Tabel Utama */}
+      {/* Main Table Area */}
       <KoreksiTable
         rows={rows}
         uploadingId={uploading}
@@ -470,15 +443,12 @@ export function KoreksiListPage({
         onConfirm={handleConfirmDelete}
       />
 
-      {/* Modal Pilihan Sumber Unggah Bukti (File Explorer vs Scanner) */}
+      {/* Modal Pilihan Sumber Unggah Bukti dengan Staging & Preview */}
       <UploadSourceDialog
         open={Boolean(uploadModalRow)}
         row={uploadModalRow}
-        loading={uploadLoading}
-        loadingMessage={uploadLoadingMsg}
-        onClose={() => !uploadLoading && setUploadModalRow(null)}
-        onSelectExplorer={handleUploadFromExplorer}
-        onSelectScanner={handleUploadFromScanner}
+        onClose={() => setUploadModalRow(null)}
+        onCommitSuccess={handleCommitUpload}
       />
     </div>
   );
