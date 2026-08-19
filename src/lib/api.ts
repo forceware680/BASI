@@ -76,6 +76,12 @@ export async function pickAndUploadBukti(
   return invoke("pick_and_upload_bukti", { id });
 }
 
+export async function scanAndUploadBukti(
+  id: string,
+): Promise<KoreksiRow | null> {
+  return invoke("scan_and_upload_bukti", { id });
+}
+
 export async function deleteBukti(id: string): Promise<KoreksiRow> {
   return invoke("delete_bukti", { id });
 }

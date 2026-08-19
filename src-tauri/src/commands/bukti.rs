@@ -101,6 +101,91 @@ pub async fn pick_and_upload_bukti(
     }
 }
 
+/// Pindai langsung dari mesin scanner (WIA Windows Image Acquisition) dan upload bukti.
+pub async fn scan_and_upload_bukti(
+    app: tauri::AppHandle,
+    db: &PgPool,
+    id: String,
+) -> Result<Option<KoreksiRow>, String> {
+    let temp_dir = std::env::temp_dir();
+    let scan_file_name = format!("simbasi_scan_{}.jpg", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+    let output_path = temp_dir.join(&scan_file_name);
+    let output_path_str = output_path.to_string_lossy().to_string();
+
+    let output_clone = output_path_str.clone();
+    let result = tokio::task::spawn_blocking(move || -> Result<Option<String>, String> {
+        let ps_code = format!(
+            r#"$ErrorActionPreference = 'Stop';
+try {{
+    $dialog = New-Object -ComObject WIA.CommonDialog;
+    $image = $dialog.ShowAcquireImage(1, 0, 131072, '{{B96B3CAE-0728-11D3-9D7B-0000F81EF32E}}', $false, $true, $true);
+    if ($null -eq $image) {{
+        Write-Output 'RESULT:CANCELED';
+        exit 0;
+    }}
+    $out = '{output}';
+    if (Test-Path $out) {{ Remove-Item -Force $out }};
+    $image.SaveFile($out);
+    Write-Output "RESULT:SUCCESS:$out";
+}} catch {{
+    $hresult = $_.Exception.HResult;
+    if ($hresult -eq -2145320860 -or $_.Exception.Message -match '0x80210064' -or $_.Exception.Message -match 'cancel') {{
+        Write-Output 'RESULT:CANCELED';
+    }} elseif ($hresult -eq -2145320939 -or $_.Exception.Message -match '0x80210015' -or $_.Exception.Message -match 'offline') {{
+        Write-Output 'RESULT:ERROR:Perangkat scanner tidak terdeteksi atau offline. Pastikan scanner sudah terhubung dan menyala.';
+    }} elseif ($hresult -eq -2145320954 -or $_.Exception.Message -match '0x80210006' -or $_.Exception.Message -match 'busy') {{
+        Write-Output 'RESULT:ERROR:Perangkat scanner sedang sibuk digunakan oleh aplikasi lain.';
+    }} else {{
+        Write-Output "RESULT:ERROR:$($_.Exception.Message)";
+    }}
+}}"#,
+            output = output_clone.replace('\\', "\\\\").replace('\'', "''")
+        );
+
+        let mut cmd = std::process::Command::new("powershell");
+        cmd.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &ps_code]);
+
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+
+        let output = cmd.output().map_err(|e| format!("Gagal menjalankan proses pemindaian: {e}"))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        for line in stdout.lines() {
+            let line = line.trim();
+            if line.starts_with("RESULT:SUCCESS:") {
+                let path = line.strip_prefix("RESULT:SUCCESS:").unwrap_or("").trim().to_string();
+                return Ok(Some(path));
+            } else if line == "RESULT:CANCELED" {
+                return Ok(None);
+            } else if line.starts_with("RESULT:ERROR:") {
+                let err_msg = line.strip_prefix("RESULT:ERROR:").unwrap_or("Gagal memindai.").trim().to_string();
+                return Err(err_msg);
+            }
+        }
+
+        if !std::path::Path::new(&output_clone).exists() {
+            return Err("Pemindaian dibatalkan atau tidak menghasilkan berkas gambar.".to_string());
+        }
+
+        Ok(Some(output_clone))
+    })
+    .await
+    .map_err(|e| format!("Task scanning gagal: {e}"))??;
+
+    match result {
+        Some(scanned_path) => {
+            let row = upload_bukti(app, db, id, scanned_path.clone()).await?;
+            let _ = std::fs::remove_file(scanned_path);
+            Ok(Some(row))
+        }
+        None => Ok(None),
+    }
+}
+
 /// Hapus file bukti scan: hapus file fisik di storage, kosongkan kolom file di DB,
 /// dan kembalikan status tanda terima menjadi MENUNGGU_BUKTI.
 pub async fn delete_bukti(db: &PgPool, id: String) -> Result<KoreksiRow, String> {

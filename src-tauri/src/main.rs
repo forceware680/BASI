@@ -107,6 +107,11 @@ async fn pick_and_upload_bukti(app: tauri::AppHandle, db: tauri::State<'_, crate
 }
 
 #[tauri::command]
+async fn scan_and_upload_bukti(app: tauri::AppHandle, db: tauri::State<'_, crate::db::DbPool>, id: String) -> Result<Option<crate::models::KoreksiRow>, String> {
+    Ok(crate::commands::bukti::scan_and_upload_bukti(app, &db, id).await?)
+}
+
+#[tauri::command]
 async fn get_bukti_base64(db: tauri::State<'_, crate::db::DbPool>, id: String) -> Result<(String, String), String> {
     Ok(crate::commands::bukti::get_bukti_base64(&db, id).await?)
 }
@@ -160,6 +165,7 @@ pub fn run() {
             delete_koreksi,
             upload_bukti,
             pick_and_upload_bukti,
+            scan_and_upload_bukti,
             delete_bukti,
             get_bukti_base64,
             is_no_ba_used,

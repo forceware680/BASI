@@ -5,6 +5,7 @@ import {
   listKoreksi,
   deleteKoreksi,
   pickAndUploadBukti,
+  scanAndUploadBukti,
   deleteBukti,
 } from "../lib/api";
 import type { KoreksiRow } from "../lib/types";
@@ -13,6 +14,7 @@ import { KoreksiFormDialog } from "../components/KoreksiFormDialog";
 import { EkspedisiPrintSheet } from "../components/print/EkspedisiPrintSheet";
 import { BuktiViewerDialog } from "../components/BuktiViewerDialog";
 import { ConfirmDeleteDialog } from "../components/ConfirmDeleteDialog";
+import { UploadSourceDialog } from "../components/UploadSourceDialog";
 import {
   Plus,
   RotateCw,
@@ -37,6 +39,9 @@ export function KoreksiListPage({
   const [editRow, setEditRow] = useState<KoreksiRow | null>(null);
   const [printRow, setPrintRow] = useState<KoreksiRow | null>(null);
   const [viewRow, setViewRow] = useState<KoreksiRow | null>(null);
+  const [uploadModalRow, setUploadModalRow] = useState<KoreksiRow | null>(null);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [uploadLoadingMsg, setUploadLoadingMsg] = useState("");
   const [uploading, setUploading] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -102,6 +107,7 @@ export function KoreksiListPage({
   const stateRef = useRef({
     formOpen,
     deleteModalOpen: deleteModal.open,
+    uploadModalOpen: Boolean(uploadModalRow),
     viewRow: Boolean(viewRow),
     printRow: Boolean(printRow),
     handleManualRefresh,
@@ -111,6 +117,7 @@ export function KoreksiListPage({
     stateRef.current = {
       formOpen,
       deleteModalOpen: deleteModal.open,
+      uploadModalOpen: Boolean(uploadModalRow),
       viewRow: Boolean(viewRow),
       printRow: Boolean(printRow),
       handleManualRefresh,
@@ -125,6 +132,7 @@ export function KoreksiListPage({
       const {
         formOpen: currentFormOpen,
         deleteModalOpen,
+        uploadModalOpen,
         viewRow: currentViewRow,
         printRow: currentPrintRow,
         handleManualRefresh: refreshFn,
@@ -148,7 +156,7 @@ export function KoreksiListPage({
 
       const isPlusKey = e.code === "NumpadAdd" || e.key === "+";
       const hasModalActive = Boolean(
-        currentFormOpen || deleteModalOpen || currentViewRow || currentPrintRow
+        currentFormOpen || deleteModalOpen || uploadModalOpen || currentViewRow || currentPrintRow
       );
 
       if (isPlusKey && !isInput && !hasModalActive && !e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -172,8 +180,13 @@ export function KoreksiListPage({
 
   const handlePrint = (row: KoreksiRow) => setPrintRow(row);
 
-  // Upload bukti dengan native file picker Rust
-  const handleUpload = async (row: KoreksiRow) => {
+  // Buka Modal Pilihan Unggah Bukti
+  const handleUpload = (row: KoreksiRow) => {
+    setUploadModalRow(row);
+  };
+
+  // 1. Upload via File Explorer (PDF / JPG / PNG)
+  const handleUploadFromExplorer = async (row: KoreksiRow) => {
     setUploading(row.id);
     try {
       const updated = await pickAndUploadBukti(row.id);
@@ -183,11 +196,37 @@ export function KoreksiListPage({
           onRowsLoaded?.(next);
           return next;
         });
+        setUploadModalRow(null);
         showToast(`Bukti ${row.no_ba} berhasil diunggah. Status berkas menjadi SELESAI.`);
       }
     } catch (e) {
       showToast(String(e), false);
     } finally {
+      setUploading(null);
+    }
+  };
+
+  // 2. Upload langsung dari Mesin Scanner (WIA)
+  const handleUploadFromScanner = async (row: KoreksiRow) => {
+    setUploadLoading(true);
+    setUploadLoadingMsg("Sedang membuka antarmuka scanner Windows...");
+    setUploading(row.id);
+    try {
+      const updated = await scanAndUploadBukti(row.id);
+      if (updated) {
+        setRows((prev: KoreksiRow[]) => {
+          const next = prev.map((r: KoreksiRow) => (r.id === updated.id ? updated : r));
+          onRowsLoaded?.(next);
+          return next;
+        });
+        setUploadModalRow(null);
+        showToast(`Hasil scan ${row.no_ba} berhasil disimpan. Status berkas menjadi SELESAI.`);
+      }
+    } catch (e) {
+      showToast(String(e), false);
+    } finally {
+      setUploadLoading(false);
+      setUploadLoadingMsg("");
       setUploading(null);
     }
   };
@@ -429,6 +468,17 @@ export function KoreksiListPage({
         loading={deleteModal.loading}
         onClose={() => setDeleteModal({ open: false, target: null, mode: "record", loading: false })}
         onConfirm={handleConfirmDelete}
+      />
+
+      {/* Modal Pilihan Sumber Unggah Bukti (File Explorer vs Scanner) */}
+      <UploadSourceDialog
+        open={Boolean(uploadModalRow)}
+        row={uploadModalRow}
+        loading={uploadLoading}
+        loadingMessage={uploadLoadingMsg}
+        onClose={() => !uploadLoading && setUploadModalRow(null)}
+        onSelectExplorer={handleUploadFromExplorer}
+        onSelectScanner={handleUploadFromScanner}
       />
     </div>
   );

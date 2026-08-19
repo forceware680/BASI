@@ -22,7 +22,7 @@ Penggunaan harian di lingkungan kerja BPKAD Kota Magelang; pencatatan surat masu
 - Master data 45 OPD Kota Magelang dengan penambahan dinamis.
 - Pembuatan, penyuntingan, dan penghapusan data BA Koreksi dengan validasi nomor unik (No. BA Koreksi dan No. Surat TU tidak boleh duplikat).
 - Cetak lembar ekspedisi tanda terima tunggal resmi (kop Pemkot Magelang, 3 kolom TTD & cap).
-- Pelacakan status dua tahap: `MENUNGGU_BUKTI` dan `SELESAI` (setelah upload 1x bukti scan lengkap).
+- Pelacakan status dua tahap: `MENUNGGU_BUKTI` dan `SELESAI` (setelah upload 1x bukti scan lengkap via File Explorer atau Direct Scanner WIA).
 - Pratinjau berkas bukti digital (PDF, JPG, PNG) dengan kendali zoom dan pembuka aplikasi OS native.
 - Ekspor rekapitulasi laporan berfilter ke CSV / Cetak Rekapitulasi resmi.
 - Fitur pencadangan dan pemulihan penuh (database SQL + file bukti dalam format `.zip`).
