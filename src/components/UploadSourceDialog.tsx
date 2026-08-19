@@ -49,15 +49,17 @@ export function UploadSourceDialog({
   const [loadingMsg, setLoadingMsg] = useState("");
   const [zoom, setZoom] = useState(1);
 
-  // Ambil daftar scanner saat dialog dibuka
+  // Reset state dan ambil daftar scanner saat dialog dibuka / berganti baris
   useEffect(() => {
-    if (!open) {
-      setTab("choose");
-      setStagedFile(null);
-      setError(null);
-      setZoom(1);
-      return;
-    }
+    setTab("choose");
+    setStagedFile(null);
+    setError(null);
+    setLoading(false);
+    setLoadingMsg("");
+    setZoom(1);
+
+    if (!open) return;
+
     setFetchingDevices(true);
     listScanners()
       .then((list) => {
@@ -68,7 +70,7 @@ export function UploadSourceDialog({
       })
       .catch(() => {})
       .finally(() => setFetchingDevices(false));
-  }, [open]);
+  }, [open, row?.id]);
 
   // Shortcut Escape untuk tutup / kembali
   useEffect(() => {
@@ -147,10 +149,15 @@ export function UploadSourceDialog({
     setLoadingMsg("Menyimpan berkas bukti scan ke database...");
     try {
       await onCommitSuccess(row, stagedFile);
+      setLoading(false);
+      setLoadingMsg("");
+      setStagedFile(null);
+      setTab("choose");
       onClose();
     } catch (e) {
       setError(String(e));
       setLoading(false);
+      setLoadingMsg("");
     }
   };
 
