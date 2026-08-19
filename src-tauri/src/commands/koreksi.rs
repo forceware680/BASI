@@ -80,6 +80,25 @@ pub async fn create_koreksi(
     payload: CreateKoreksiDto,
 ) -> Result<KoreksiRow, String> {
     crate::models::validate(&payload)?;
+
+    // Cek duplikat No. Surat TU
+    let tu_exists = is_no_tu_used(db, payload.no_tu.clone(), None).await?;
+    if tu_exists {
+        return Err(format!(
+            "No. Surat TU '{}' sudah terdaftar dalam sistem. Nomor TU tidak boleh duplikat.",
+            payload.no_tu.trim()
+        ));
+    }
+
+    // Cek duplikat No. BA Koreksi
+    let ba_exists = is_no_ba_used(db, payload.no_ba.clone(), None).await?;
+    if ba_exists {
+        return Err(format!(
+            "No. BA Koreksi '{}' sudah terdaftar dalam sistem. Nomor BA tidak boleh duplikat.",
+            payload.no_ba.trim()
+        ));
+    }
+
     let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM master_opd WHERE id = $1")
         .bind(payload.opd_id)
         .fetch_one(db)
@@ -91,15 +110,24 @@ pub async fn create_koreksi(
     let id: String = sqlx::query_scalar(
         "INSERT INTO koreksi_bmd (no_tu, no_ba, opd_id, tanggal_surat, penjelasan_koreksi) VALUES ($1, $2, $3, $4::date, $5) RETURNING id::text",
     )
-    .bind(&payload.no_tu)
-    .bind(&payload.no_ba)
+    .bind(payload.no_tu.trim())
+    .bind(payload.no_ba.trim())
     .bind(payload.opd_id)
     .bind(&payload.tanggal_surat)
     .bind(&payload.penjelasan_koreksi)
     .fetch_one(db)
     .await
-    .map_err(db_err)?;
-    println!("[KOREKSI] Berhasil menambahkan BA Koreksi baru: '{}' (TU: '{}')", payload.no_ba, payload.no_tu);
+    .map_err(|e| {
+        let msg = e.to_string().to_lowercase();
+        if msg.contains("idx_koreksi_no_ba_unique") || msg.contains("unique") && msg.contains("no_ba") {
+            format!("No. BA Koreksi '{}' sudah terdaftar dalam database.", payload.no_ba.trim())
+        } else if msg.contains("idx_koreksi_no_tu_unique") || msg.contains("unique") && msg.contains("no_tu") {
+            format!("No. Surat TU '{}' sudah terdaftar dalam database.", payload.no_tu.trim())
+        } else {
+            db_err(e)
+        }
+    })?;
+    println!("[KOREKSI] Berhasil menambahkan BA Koreksi baru: '{}' (TU: '{}')", payload.no_ba.trim(), payload.no_tu.trim());
     get_koreksi(db, &id).await
 }
 
@@ -114,19 +142,47 @@ pub async fn update_koreksi(
         return Err("Record sudah SELESAI dan bersifat read-only.".to_string());
     }
     crate::models::validate(&payload)?;
+
+    // Cek duplikat No. Surat TU (kecuali id ini)
+    let tu_exists = is_no_tu_used(db, payload.no_tu.clone(), Some(id.clone())).await?;
+    if tu_exists {
+        return Err(format!(
+            "No. Surat TU '{}' sudah terdaftar pada berkas lain. Nomor TU tidak boleh duplikat.",
+            payload.no_tu.trim()
+        ));
+    }
+
+    // Cek duplikat No. BA Koreksi (kecuali id ini)
+    let ba_exists = is_no_ba_used(db, payload.no_ba.clone(), Some(id.clone())).await?;
+    if ba_exists {
+        return Err(format!(
+            "No. BA Koreksi '{}' sudah terdaftar pada berkas lain. Nomor BA tidak boleh duplikat.",
+            payload.no_ba.trim()
+        ));
+    }
+
     sqlx::query(
         "UPDATE koreksi_bmd SET no_tu=$1, no_ba=$2, opd_id=$3, tanggal_surat=$4::date, penjelasan_koreksi=$5 WHERE id=$6::uuid",
     )
-    .bind(&payload.no_tu)
-    .bind(&payload.no_ba)
+    .bind(payload.no_tu.trim())
+    .bind(payload.no_ba.trim())
     .bind(payload.opd_id)
     .bind(&payload.tanggal_surat)
     .bind(&payload.penjelasan_koreksi)
     .bind(&id)
     .execute(db)
     .await
-    .map_err(db_err)?;
-    println!("[KOREKSI] Berhasil memperbarui data BA Koreksi: '{}'", payload.no_ba);
+    .map_err(|e| {
+        let msg = e.to_string().to_lowercase();
+        if msg.contains("idx_koreksi_no_ba_unique") || msg.contains("unique") && msg.contains("no_ba") {
+            format!("No. BA Koreksi '{}' sudah terdaftar dalam database.", payload.no_ba.trim())
+        } else if msg.contains("idx_koreksi_no_tu_unique") || msg.contains("unique") && msg.contains("no_tu") {
+            format!("No. Surat TU '{}' sudah terdaftar dalam database.", payload.no_tu.trim())
+        } else {
+            db_err(e)
+        }
+    })?;
+    println!("[KOREKSI] Berhasil memperbarui data BA Koreksi: '{}'", payload.no_ba.trim());
     get_koreksi(db, &id).await
 }
 
@@ -145,16 +201,33 @@ pub async fn delete_koreksi(db: &PgPool, id: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Cek duplikat no_ba (warning, bukan blokir).
+/// Cek duplikat no_ba (case-insensitive & trimmed).
 pub async fn is_no_ba_used(
     db: &PgPool,
     no_ba: String,
     exclude: Option<String>,
 ) -> Result<bool, String> {
     let n: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM koreksi_bmd WHERE lower(no_ba)=lower($1) AND ($2::uuid IS NULL OR id <> $2::uuid)",
+        "SELECT COUNT(*) FROM koreksi_bmd WHERE lower(trim(no_ba))=lower(trim($1)) AND ($2::uuid IS NULL OR id <> $2::uuid)",
     )
     .bind(&no_ba)
+    .bind(exclude)
+    .fetch_one(db)
+    .await
+    .map_err(db_err)?;
+    Ok(n > 0)
+}
+
+/// Cek duplikat no_tu (case-insensitive & trimmed).
+pub async fn is_no_tu_used(
+    db: &PgPool,
+    no_tu: String,
+    exclude: Option<String>,
+) -> Result<bool, String> {
+    let n: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM koreksi_bmd WHERE lower(trim(no_tu))=lower(trim($1)) AND ($2::uuid IS NULL OR id <> $2::uuid)",
+    )
+    .bind(&no_tu)
     .bind(exclude)
     .fetch_one(db)
     .await

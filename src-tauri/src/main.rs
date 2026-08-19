@@ -122,6 +122,11 @@ async fn is_no_ba_used(db: tauri::State<'_, crate::db::DbPool>, no_ba: String, e
 }
 
 #[tauri::command]
+async fn is_no_tu_used(db: tauri::State<'_, crate::db::DbPool>, no_tu: String, exclude: Option<String>) -> Result<bool, String> {
+    Ok(crate::commands::koreksi::is_no_tu_used(&db, no_tu, exclude).await?)
+}
+
+#[tauri::command]
 #[allow(deprecated)]
 async fn open_bukti_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
     app.shell().open(path, None).map_err(|_| "Gagal membuka file bukti.".to_string())
@@ -158,6 +163,7 @@ pub fn run() {
             delete_bukti,
             get_bukti_base64,
             is_no_ba_used,
+            is_no_tu_used,
             open_bukti_path,
             create_backup,
             restore_backup,

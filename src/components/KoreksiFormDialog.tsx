@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import {
   createKoreksi,
   isNoBaUsed,
+  isNoTuUsed,
   updateKoreksi,
 } from "../lib/api";
 import { todayIso } from "../lib/types";
@@ -40,23 +41,18 @@ const btnSecondary =
   "rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors";
 
 /**
- * Format otomatis template nomor dinas: 000.2.3.2/[tengah]/440
+ * Format otomatis template nomor dinas
  */
-function autoFormatNomor(val: string): string {
-  const trimmed = val.trim();
+function autoFormatNomor(raw: string): string {
+  const trimmed = raw.trim();
   if (!trimmed) return "";
-  
-  // Jika user hanya ketik angka/kode tengah tanpa slash (misal "1331")
-  if (!trimmed.includes("/")) {
+  if (/^\d+$/.test(trimmed)) {
     return `000.2.3.2/${trimmed}/440`;
   }
-  // Jika user ketik "1331/440"
-  if (trimmed.endsWith("/440") && !trimmed.startsWith("000.2.3.2/")) {
-    const middle = trimmed.replace(/\/440$/, "");
-    return `000.2.3.2/${middle}/440`;
+  if (/^\d+\/\d+$/.test(trimmed)) {
+    return `000.2.3.2/${trimmed}`;
   }
-  // Jika user ketik "000.2.3.2/1331"
-  if (trimmed.startsWith("000.2.3.2/") && !trimmed.endsWith("/440") && !trimmed.slice(10).includes("/")) {
+  if (/^000\.2\.3\.2\/\d+$/.test(trimmed)) {
     return `${trimmed}/440`;
   }
   return trimmed;
@@ -77,7 +73,6 @@ export function KoreksiFormDialog({
 }) {
   const [fields, setFields] = useState<Fields>(EMPTY);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [noBaWarning, setNoBaWarning] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -94,7 +89,6 @@ export function KoreksiFormDialog({
       setFields(EMPTY);
     }
     setErrors({});
-    setNoBaWarning(null);
   }, [open, initial]);
 
   if (!open) return null;
@@ -102,38 +96,57 @@ export function KoreksiFormDialog({
   const update = (patch: Partial<Fields>) =>
     setFields((prev) => ({ ...prev, ...patch }));
 
-  // Auto-format saat No TU blur / tab
-  const handleBlurNoTu = () => {
+  // Auto-format saat No TU blur / tab + cek duplikat
+  const handleBlurNoTu = async () => {
     if (fields.no_tu) {
       const formatted = autoFormatNomor(fields.no_tu);
       if (formatted !== fields.no_tu) {
         update({ no_tu: formatted });
       }
+      const raw = (formatted || fields.no_tu).trim();
+      const exclude = open === "edit" && initial ? initial.id : undefined;
+      const used = await isNoTuUsed(raw, exclude).catch(() => false);
+      if (used) {
+        setErrors((prev) => ({ ...prev, no_tu: `No. Surat TU "${raw}" sudah terdaftar.` }));
+      } else {
+        setErrors((prev) => {
+          const next = { ...prev };
+          delete next.no_tu;
+          return next;
+        });
+      }
     }
   };
 
-  // Auto-format saat No BA blur / tab + cek warning duplikat
+  // Auto-format saat No BA blur / tab + cek duplikat
   const handleBlurNoBa = async () => {
     if (fields.no_ba) {
       const formatted = autoFormatNomor(fields.no_ba);
       if (formatted !== fields.no_ba) {
         update({ no_ba: formatted });
       }
-      const raw = formatted || fields.no_ba;
+      const raw = (formatted || fields.no_ba).trim();
       const exclude = open === "edit" && initial ? initial.id : undefined;
       const used = await isNoBaUsed(raw, exclude).catch(() => false);
       if (used) {
-        setNoBaWarning(`Peringatan: No. BA "${raw}" sudah pernah dicatat sebelumnya.`);
+        setErrors((prev) => ({ ...prev, no_ba: `No. BA Koreksi "${raw}" sudah terdaftar.` }));
       } else {
-        setNoBaWarning(null);
+        setErrors((prev) => {
+          const next = { ...prev };
+          delete next.no_ba;
+          return next;
+        });
       }
     }
   };
 
-  const validate = (): boolean => {
+  const validate = async (): Promise<boolean> => {
     const errs: Record<string, string> = {};
-    if (!fields.no_tu.trim()) errs.no_tu = "No. Surat TU wajib diisi.";
-    if (!fields.no_ba.trim()) errs.no_ba = "No. BA Koreksi wajib diisi.";
+    const noTu = fields.no_tu.trim();
+    const noBa = fields.no_ba.trim();
+
+    if (!noTu) errs.no_tu = "No. Surat TU wajib diisi.";
+    if (!noBa) errs.no_ba = "No. BA Koreksi wajib diisi.";
     if (!fields.opd_id) errs.opd_id = "Pilih OPD pengusul.";
     if (!fields.tanggal_surat) errs.tanggal_surat = "Tanggal surat wajib diisi.";
     if (fields.tanggal_surat > todayIso()) {
@@ -142,12 +155,31 @@ export function KoreksiFormDialog({
     if (!fields.penjelasan_koreksi.trim()) {
       errs.penjelasan_koreksi = "Uraian penjelasan koreksi wajib diisi.";
     }
+
+    const exclude = open === "edit" && initial ? initial.id : undefined;
+
+    // Validasi duplikat asynchronous
+    if (noTu && !errs.no_tu) {
+      const tuUsed = await isNoTuUsed(noTu, exclude).catch(() => false);
+      if (tuUsed) {
+        errs.no_tu = `No. Surat TU "${noTu}" sudah terdaftar dalam sistem.`;
+      }
+    }
+
+    if (noBa && !errs.no_ba) {
+      const baUsed = await isNoBaUsed(noBa, exclude).catch(() => false);
+      if (baUsed) {
+        errs.no_ba = `No. BA Koreksi "${noBa}" sudah terdaftar dalam sistem.`;
+      }
+    }
+
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
   const submit = async (printAfter = false) => {
-    if (!validate()) return;
+    const valid = await validate();
+    if (!valid) return;
     setSaving(true);
     try {
       const dto = {
@@ -166,7 +198,14 @@ export function KoreksiFormDialog({
       onSaved(row);
       if (printAfter) onPrint(row);
     } catch (err) {
-      setErrors((prev) => ({ ...prev, _form: String(err) }));
+      const errMsg = String(err);
+      if (errMsg.toLowerCase().includes("no. surat tu") || errMsg.toLowerCase().includes("no_tu")) {
+        setErrors((prev) => ({ ...prev, no_tu: errMsg }));
+      } else if (errMsg.toLowerCase().includes("no. ba") || errMsg.toLowerCase().includes("no_ba")) {
+        setErrors((prev) => ({ ...prev, no_ba: errMsg }));
+      } else {
+        setErrors((prev) => ({ ...prev, _form: errMsg }));
+      }
     } finally {
       setSaving(false);
     }
@@ -258,11 +297,6 @@ export function KoreksiFormDialog({
                 </button>
               )}
             </div>
-            {noBaWarning && (
-              <p className="mt-1 rounded-lg bg-amber-50 dark:bg-amber-950/50 px-2.5 py-1 text-xs font-medium text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60">
-                {noBaWarning}
-              </p>
-            )}
           </Field>
 
           <Field label="OPD Pengusul" error={errors.opd_id}>

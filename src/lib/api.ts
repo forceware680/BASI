@@ -87,6 +87,13 @@ export async function isNoBaUsed(
   return invoke("is_no_ba_used", { no_ba, exclude });
 }
 
+export async function isNoTuUsed(
+  no_tu: string,
+  exclude?: string,
+): Promise<boolean> {
+  return invoke("is_no_tu_used", { no_tu, exclude });
+}
+
 export async function openBuktiPath(path: string): Promise<void> {
   return invoke("open_bukti_path", { path });
 }
