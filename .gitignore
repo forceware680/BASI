@@ -37,6 +37,3 @@ Thumbs.db
 *.njsproj
 *.sln
 *.swp
-
-# AI Assistant Cache
-.antigravity/
