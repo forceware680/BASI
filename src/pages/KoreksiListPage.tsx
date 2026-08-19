@@ -38,6 +38,7 @@ export function KoreksiListPage({
   const [printRow, setPrintRow] = useState<KoreksiRow | null>(null);
   const [viewRow, setViewRow] = useState<KoreksiRow | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Modal Konfirmasi Hapus
   const [deleteModal, setDeleteModal] = useState<{
@@ -83,6 +84,20 @@ export function KoreksiListPage({
       })
       .catch((e) => setError(String(e)));
   }, [onRowsLoaded]);
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const data = await listKoreksi();
+      setRows(data);
+      onRowsLoaded?.(data);
+      showToast("Data berkas berhasil disegarkan.");
+    } catch (e) {
+      showToast(String(e), false);
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
+  };
 
   // Statistik Ringkasan (KPI)
   const stats = useMemo(() => {
@@ -241,12 +256,13 @@ export function KoreksiListPage({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => refresh()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400"
-            title="Muat ulang data"
+            disabled={isRefreshing}
+            onClick={handleManualRefresh}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-75"
+            title="Muat ulang data dari database"
           >
-            <RotateCw className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
-            <span>Segarkan</span>
+            <RotateCw className={`h-3.5 w-3.5 text-slate-500 dark:text-slate-400 transition-transform ${isRefreshing ? "animate-spin text-indigo-600 dark:text-indigo-400" : ""}`} />
+            <span>{isRefreshing ? "Menyegarkan…" : "Segarkan"}</span>
           </button>
 
           <button
