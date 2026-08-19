@@ -72,7 +72,7 @@ Aplikasi memiliki manajemen database otomatis:
 * **Pencetakan Dokumen Resmi**:
   * Lembar Tanda Terima Ekspedisi Tunggal (Kop resmi Pemerintah Kota Magelang).
   * Rekapitulasi Laporan Berita Acara berdasarkan rentang tanggal dan status.
-* **Unggah Bukti Scan (File Explorer & Mesin Scanner Langsung)**: Pilihan unggah fleksibel: pilih file dokumen digital yang sudah ada (PDF, JPG, PNG) atau memindai lembar fisik tanda terima langsung dari mesin scanner terhubung menggunakan antarmuka Windows Image Acquisition (WIA). Dilengkapi pratinjau bukti digital dan kontrol zoom interaktif.
+* **Unggah Bukti Scan (File Explorer & Mesin Scanner Langsung)**: Pilihan unggah fleksibel: pilih file dokumen digital yang sudah ada (PDF, JPG, PNG) atau memindai lembar fisik tanda terima langsung dari mesin scanner terhubung menggunakan antarmuka Windows Image Acquisition (WIA). Mendukung output **PDF Dokumen Resmi (`.pdf`)** dan Gambar (`.jpg`), konfigurasi ADF (Feeder) auto-centering A4/F4, Flatbed, 150/300/600/1200 DPI, mode warna (Color/Grayscale/BW), serta layar Staging & Pratinjau interaktif sebelum disimpan ke database.
 * **Ekspor Data**: Ekspor tabel rekapitulasi ke format CSV/Excel dengan UTF-8 BOM.
 * **Cadangan & Pemulihan (Backup & Restore)**: Backup penuh seluruh database PostgreSQL dan berkas fisik bukti scan menjadi 1 file `.zip`.
 * **Dark Mode**: Antarmuka adaptif tema terang / gelap dengan palet warna nyaman mata.

@@ -1,6 +1,7 @@
 // commands/bukti.rs — upload, view, dan hapus bukti tunggal (REQ-04/05).
 
 use crate::models::KoreksiRow;
+use base64::Engine;
 use sqlx::PgPool;
 
 const MAX_SIZE: u64 = 150 * 1024 * 1024; // 150 MB (Mendukung scan resolusi tinggi & dokumen multi-halaman)
@@ -32,10 +33,118 @@ pub struct ScannerDeviceInfo {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
 pub struct ScanOptions {
     pub device_id: Option<String>,
-    pub source: Option<String>,      // "ADF" | "Flatbed"
-    pub dpi: Option<u32>,            // 150 | 300 | 600 | 1200
-    pub page_size: Option<String>,   // "A4" | "F4"
-    pub color_mode: Option<String>,  // "Color" | "Grayscale" | "BW"
+    pub source: Option<String>,         // "ADF" | "Flatbed"
+    pub dpi: Option<u32>,               // 150 | 300 | 600 | 1200
+    pub page_size: Option<String>,      // "A4" | "F4"
+    pub color_mode: Option<String>,     // "Color" | "Grayscale" | "BW"
+    pub output_format: Option<String>,  // "PDF" | "JPG"
+}
+
+fn extract_jpeg_dimensions(data: &[u8]) -> Option<(u32, u32, bool)> {
+    let mut i = 0;
+    while i < data.len().saturating_sub(8) {
+        if data[i] == 0xFF {
+            let marker = data[i + 1];
+            // SOF0 (0xC0), SOF1 (0xC1), SOF2 (0xC2)
+            if marker == 0xC0 || marker == 0xC1 || marker == 0xC2 {
+                let h = ((data[i + 5] as u32) << 8) | (data[i + 6] as u32);
+                let w = ((data[i + 7] as u32) << 8) | (data[i + 8] as u32);
+                let components = if i + 9 < data.len() { data[i + 9] } else { 3 };
+                return Some((w, h, components == 1));
+            }
+            if marker == 0xD8 || marker == 0xD9 {
+                i += 2;
+                continue;
+            }
+            if i + 3 < data.len() {
+                let len = ((data[i + 2] as usize) << 8) | (data[i + 3] as usize);
+                i += 2 + len;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Membungkus gambar JPEG pindaian menjadi dokumen PDF 1.4 resmi standar tanpa re-encode.
+pub fn wrap_jpeg_as_pdf(
+    jpeg_bytes: &[u8],
+    page_size: &str,
+) -> Result<Vec<u8>, String> {
+    let (page_w, page_h) = if page_size == "F4" {
+        (612.0f32, 936.0f32)
+    } else {
+        (595.28f32, 841.89f32) // A4 standar (210 x 297 mm)
+    };
+
+    let (img_w, img_h, is_gray) = extract_jpeg_dimensions(jpeg_bytes)
+        .unwrap_or((2480, 3508, false));
+
+    let colorspace = if is_gray { "DeviceGray" } else { "DeviceRGB" };
+    let content_stream = format!(
+        "q\n{:.2} 0 0 {:.2} 0 0 cm\n/Im0 Do\nQ\n",
+        page_w, page_h
+    );
+
+    let mut pdf = Vec::new();
+    let mut offsets = Vec::new();
+
+    // Header
+    pdf.extend_from_slice(b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
+
+    // 1: Catalog
+    offsets.push(pdf.len());
+    pdf.extend_from_slice(b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+
+    // 2: Pages
+    offsets.push(pdf.len());
+    pdf.extend_from_slice(b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
+
+    // 3: Page
+    offsets.push(pdf.len());
+    let page_obj = format!(
+        "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {:.2} {:.2}] /Contents 4 0 R /Resources << /XObject << /Im0 5 0 R >> >> >>\nendobj\n",
+        page_w, page_h
+    );
+    pdf.extend_from_slice(page_obj.as_bytes());
+
+    // 4: Contents
+    offsets.push(pdf.len());
+    let contents_obj = format!(
+        "4 0 obj\n<< /Length {} >>\nstream\n{}endstream\nendobj\n",
+        content_stream.len(),
+        content_stream
+    );
+    pdf.extend_from_slice(contents_obj.as_bytes());
+
+    // 5: XObject Image
+    offsets.push(pdf.len());
+    let img_header = format!(
+        "5 0 obj\n<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /{} /BitsPerComponent 8 /Filter /DCTDecode /Length {} >>\nstream\n",
+        img_w, img_h, colorspace, jpeg_bytes.len()
+    );
+    pdf.extend_from_slice(img_header.as_bytes());
+    pdf.extend_from_slice(jpeg_bytes);
+    pdf.extend_from_slice(b"\nendstream\nendobj\n");
+
+    // XRef table
+    let xref_offset = pdf.len();
+    let num_objects = offsets.len() + 1;
+    let mut xref = format!("xref\n0 {}\n0000000000 65535 f \n", num_objects);
+    for offset in &offsets {
+        xref.push_str(&format!("{:010} 00000 n \n", offset));
+    }
+    pdf.extend_from_slice(xref.as_bytes());
+
+    // Trailer
+    let trailer = format!(
+        "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n",
+        num_objects, xref_offset
+    );
+    pdf.extend_from_slice(trailer.as_bytes());
+
+    Ok(pdf)
 }
 
 /// Mendeteksi daftar perangkat scanner WIA yang terhubung di komputer / LAN.
@@ -205,6 +314,9 @@ pub async fn scan_to_staging(
     let dpi = opts.dpi.unwrap_or(300);
     let page_size = opts.page_size.unwrap_or_else(|| "A4".to_string());
     let color_mode = opts.color_mode.unwrap_or_else(|| "Color".to_string());
+
+    let output_format = opts.output_format.unwrap_or_else(|| "PDF".to_string());
+    let output_format_clone = output_format.clone();
 
     let temp_dir = std::env::temp_dir();
     let scan_file_name = format!("simbasi_staging_{}.jpg", chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
@@ -388,20 +500,55 @@ try {{
 
     match result {
         Some(scanned_path) => {
-            let (mime, data_url) = crate::storage::read_bukti_as_data_url(&scanned_path)
-                .map_err(|e| format!("Gagal memuat pratinjau hasil scan: {e}"))?;
-            let meta = std::fs::metadata(&scanned_path)
-                .map_err(|_| "Gagal membaca metadata file hasil scan.".to_string())?;
+            let wants_pdf = output_format_clone.eq_ignore_ascii_case("PDF");
 
-            let file_name = format!("Scan_{}_{}DPI_{}.jpg", source_clone, dpi, page_size_clone);
+            if wants_pdf {
+                // Konversi JPEG menjadi Dokumen PDF standar resmi
+                let jpeg_bytes = std::fs::read(&scanned_path)
+                    .map_err(|e| format!("Gagal membaca hasil scan JPEG: {e}"))?;
+                let pdf_bytes = wrap_jpeg_as_pdf(&jpeg_bytes, &page_size_clone)?;
 
-            Ok(Some(StagedFile {
-                source_path: scanned_path,
-                file_name,
-                file_size: meta.len(),
-                file_type: mime,
-                data_url,
-            }))
+                let pdf_name = format!(
+                    "simbasi_staging_{}.pdf",
+                    chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+                );
+                let pdf_path = temp_dir.join(&pdf_name);
+                std::fs::write(&pdf_path, &pdf_bytes)
+                    .map_err(|e| format!("Gagal menyimpan berkas PDF staging: {e}"))?;
+
+                // Hapus berkas temporary JPEG
+                let _ = std::fs::remove_file(&scanned_path);
+
+                let pdf_path_str = pdf_path.to_string_lossy().to_string();
+                let file_name = format!("Scan_{}_{}DPI_{}.pdf", source_clone, dpi, page_size_clone);
+                let data_url = format!(
+                    "data:application/pdf;base64,{}",
+                    base64::engine::general_purpose::STANDARD.encode(&pdf_bytes)
+                );
+
+                Ok(Some(StagedFile {
+                    source_path: pdf_path_str,
+                    file_name,
+                    file_size: pdf_bytes.len() as u64,
+                    file_type: "application/pdf".to_string(),
+                    data_url,
+                }))
+            } else {
+                let (mime, data_url) = crate::storage::read_bukti_as_data_url(&scanned_path)
+                    .map_err(|e| format!("Gagal memuat pratinjau hasil scan: {e}"))?;
+                let meta = std::fs::metadata(&scanned_path)
+                    .map_err(|_| "Gagal membaca metadata file hasil scan.".to_string())?;
+
+                let file_name = format!("Scan_{}_{}DPI_{}.jpg", source_clone, dpi, page_size_clone);
+
+                Ok(Some(StagedFile {
+                    source_path: scanned_path,
+                    file_name,
+                    file_size: meta.len(),
+                    file_type: mime,
+                    data_url,
+                }))
+            }
         }
         None => Ok(None),
     }

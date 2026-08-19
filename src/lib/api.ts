@@ -87,6 +87,7 @@ export interface ScanOptions {
   dpi?: number;
   page_size?: "A4" | "F4";
   color_mode?: "Color" | "Grayscale" | "BW";
+  output_format?: "PDF" | "JPG";
 }
 
 export async function listScanners(): Promise<ScannerDeviceInfo[]> {

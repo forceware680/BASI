@@ -41,6 +41,7 @@ export function UploadSourceDialog({
   const [dpi, setDpi] = useState<number>(300);
   const [pageSize, setPageSize] = useState<"A4" | "F4">("A4");
   const [colorMode, setColorMode] = useState<"Color" | "Grayscale" | "BW">("Color");
+  const [outputFormat, setOutputFormat] = useState<"PDF" | "JPG">("PDF");
   const [fetchingDevices, setFetchingDevices] = useState(false);
 
   // Staging & Preview State
@@ -119,7 +120,7 @@ export function UploadSourceDialog({
   const handleStartScan = async () => {
     setError(null);
     setLoading(true);
-    setLoadingMsg(`Sedang memindai dari ${source === "ADF" ? "Tray ADF (Feeder)" : "Kaca Flatbed"} (${dpi} DPI)...`);
+    setLoadingMsg(`Sedang memindai dari ${source === "ADF" ? "Tray ADF (Feeder)" : "Kaca Flatbed"} (${dpi} DPI ke ${outputFormat})...`);
     try {
       const options: ScanOptions = {
         device_id: selectedDeviceId || undefined,
@@ -127,6 +128,7 @@ export function UploadSourceDialog({
         dpi,
         page_size: pageSize,
         color_mode: colorMode,
+        output_format: outputFormat,
       };
       const staged = await scanToStaging(options);
       if (staged) {
@@ -358,6 +360,37 @@ export function UploadSourceDialog({
                 </div>
               </div>
 
+              {/* Format Dokumen Output (PDF vs JPG) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Format Berkas Output
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setOutputFormat("PDF")}
+                    className={`rounded-lg py-1.5 text-xs font-semibold border transition-all cursor-pointer ${
+                      outputFormat === "PDF"
+                        ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                        : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    PDF Dokumen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOutputFormat("JPG")}
+                    className={`rounded-lg py-1.5 text-xs font-semibold border transition-all cursor-pointer ${
+                      outputFormat === "JPG"
+                        ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                        : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    Gambar (JPG)
+                  </button>
+                </div>
+              </div>
+
               {/* Resolusi DPI */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -409,7 +442,7 @@ export function UploadSourceDialog({
 
             {/* Info Kapasitas & Pratinjau */}
             <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/70 dark:bg-emerald-950/40 p-3 text-[11px] text-emerald-800 dark:text-emerald-300 leading-relaxed">
-              <span className="font-bold">✓ Staging Preview Otomatis:</span> Setelah pindaian selesai, hasil scan akan ditampilkan di layar pratinjau terlebih dahulu. Berkas baru akan disimpan ke database setelah Anda menyetujuinya.
+              <span className="font-bold">✓ Staging & Format {outputFormat}:</span> Dokumen hasil scan akan otomatis dipaketkan menjadi berkas {outputFormat === "PDF" ? "PDF Dokumen Resmi" : "Gambar JPEG"} siap arsip dan ditampilkan pada layar pratinjau sebelum disimpan ke database.
             </div>
 
             {/* Tombol Aksi Eksekusi Scan */}
@@ -427,7 +460,7 @@ export function UploadSourceDialog({
                 className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-xs font-semibold text-white shadow-md transition-all cursor-pointer"
               >
                 <Printer className="h-4 w-4" />
-                <span>Mulai Pindai ({source} • {dpi} DPI • {pageSize})</span>
+                <span>Mulai Pindai ({source} • {outputFormat} • {dpi} DPI • {pageSize})</span>
               </button>
             </div>
           </div>
