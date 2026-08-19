@@ -11,6 +11,11 @@ src-tauri/target/
 target/
 **/*.rs.bk
 
+# Large Binary Bundles (PostgreSQL Portable)
+# Jalankan 'npm run setup:pgsql' setelah git clone untuk menyiapkan biner lokal
+src-tauri/resources/pgsql/
+!src-tauri/resources/.gitkeep
+
 # Environment & Local Configuration
 .env
 .env.local

@@ -1,4 +1,4 @@
-// main.rs — SIMBASI BMD (Tauri v2).
+// main.rs — SIMBASI BMD (Tauri v2) dengan integrasi Portable PostgreSQL auto-managed.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(dead_code)]
@@ -7,10 +7,15 @@
 mod commands;
 mod db;
 mod models;
+mod pgsql_daemon;
 mod storage;
 
+use std::path::PathBuf;
+use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
+
+pub struct PortableDbState(pub Mutex<Option<PathBuf>>);
 
 #[cfg(windows)]
 extern "system" {
@@ -152,12 +157,34 @@ pub fn run() {
                 }
             }
 
+            // Auto-detect dan jalankan PostgreSQL portable jika port 5432 belum aktif
+            let portable_dir = match crate::pgsql_daemon::ensure_pgsql_running(app.handle()) {
+                Ok(d) => d,
+                Err(e) => {
+                    println!("[PGSQL ERROR] {e}");
+                    None
+                }
+            };
+            app.manage(PortableDbState(Mutex::new(portable_dir)));
+
             // Koneksi DB + auto-create database & migrasi idempoten saat startup
             let pool = tauri::async_runtime::block_on(crate::db::connect())
                 .expect("Tidak dapat terhubung ke database. Periksa layanan PostgreSQL.");
             println!("[APP] Inisialisasi aplikasi selesai. Siap melayani permintaan.");
             app.manage(pool);
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                let app = window.app_handle();
+                if let Some(state) = app.try_state::<PortableDbState>() {
+                    if let Ok(guard) = state.0.lock() {
+                        if let Some(ref data_dir) = *guard {
+                            crate::pgsql_daemon::stop_portable_pgsql(&app, data_dir);
+                        }
+                    }
+                }
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
