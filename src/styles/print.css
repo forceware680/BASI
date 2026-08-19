@@ -1,39 +1,85 @@
-/* print.css — @media print: hanya cetak lembar EkspedisiPrintSheet. */
-/*
- * REQ-03: 1 lembar A4 portrait, hitam-putih, tanpa footer/page chrome.
- *
- * Strategi: React app-nya ada di #root; lembar cetak di-portalkan ke <body>
- * (saudara #root). Saat print: sembunyikan #root (seluruh app) + toolbar dialog,
- * netral-kan backdrop overlay, dan biarkan hanya #ekspedisi-print-sheet yang
- * ter-render. Layout grid (info 160px/1fr + TTD 3 kolom) di-drive inline-style
- * di komponen — inline style menang atas rule apa pun, jadi tidak perlu override.
- */
+/* print.css — @media print: pastikan tepat 1 lembar tanpa halaman kosong & kompatibel dengan printer Brother / Epson / Canon */
 
-/* ===== @page: kertas A4 portrait ===== */
 @page {
-  size: A4 portrait;
-  margin: 15mm;
+  size: auto;
+  margin: 10mm 15mm;
 }
 
-/* ===== Print mode ===== */
 @media print {
-  /* Sembunyikan seluruh UI aplikasi (#root) + tombol dialog. */
+  /* Sembunyikan seluruh elemen di body KECUALI lembar cetak aktif */
+  body > *:not(.print-overlay-root) {
+    display: none !important;
+  }
+
   #root,
   .print-toolbar {
-    display: none;
+    display: none !important;
   }
 
-  /* Netral-kan backdrop overlay: jangan jadi fixed / penutup / scroll. */
-  .print-overlay-root {
-    position: static;
-    overflow: visible;
-    background: transparent;
-  }
-
-  /* Hapus margin root; @page margin yang atur spacing kertas. */
   html,
   body {
-    margin: 0;
-    padding: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    background: white !important;
+    overflow: visible !important;
+    width: 100% !important;
+  }
+
+  .print-overlay-root {
+    position: static !important;
+    display: block !important;
+    overflow: visible !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    page-break-before: avoid !important;
+    page-break-after: avoid !important;
+    break-before: avoid !important;
+    break-after: avoid !important;
+  }
+
+  .print-overlay-root > div {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Lembar Ekspedisi Tunggal */
+  #ekspedisi-print-sheet {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    page-break-before: avoid !important;
+    page-break-after: avoid !important;
+    page-break-inside: avoid !important;
+    break-before: avoid !important;
+    break-after: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Lembar Rekapitulasi Laporan */
+  #rekapitulasi-print-sheet {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    page-break-before: avoid !important;
+    page-break-inside: auto !important;
+    break-before: avoid !important;
   }
 }

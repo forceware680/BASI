@@ -63,6 +63,7 @@ pub fn remove_file(path: &str) {
 
 /// Baca file bukti → (mime, data_url) untuk viewer.
 pub fn read_bukti_as_data_url(path: &str) -> std::io::Result<(String, String)> {
+    use base64::Engine;
     let bytes = fs::read(path)?;
     let mime = if path.ends_with(".pdf") {
         "application/pdf"
@@ -71,7 +72,7 @@ pub fn read_bukti_as_data_url(path: &str) -> std::io::Result<(String, String)> {
     } else {
         "image/jpeg"
     };
-    let encoded = base64::encode(&bytes);
+    let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
     let data_url = format!("data:{};base64,{}", mime, encoded);
     Ok((mime.to_string(), data_url))
 }

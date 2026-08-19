@@ -31,6 +31,7 @@ impl StatusTandaTerima {
         }
     }
     /// Ke string DB.
+    #[allow(dead_code)]
     pub fn to_db(&self) -> &'static str {
         match self {
             Self::MenungguBukti => "MENUNGGU_BUKTI",

@@ -1,5 +1,8 @@
 // main.rs — SIM-BA Koreksi BMD (Tauri v2).
 
+#![allow(dead_code)]
+#![allow(deprecated)]
+
 mod commands;
 mod db;
 mod models;
@@ -50,8 +53,18 @@ async fn upload_bukti(app: tauri::AppHandle, db: tauri::State<'_, crate::db::DbP
 }
 
 #[tauri::command]
+async fn pick_and_upload_bukti(app: tauri::AppHandle, db: tauri::State<'_, crate::db::DbPool>, id: String) -> Result<Option<crate::models::KoreksiRow>, String> {
+    Ok(crate::commands::bukti::pick_and_upload_bukti(app, &db, id).await?)
+}
+
+#[tauri::command]
 async fn get_bukti_base64(db: tauri::State<'_, crate::db::DbPool>, id: String) -> Result<(String, String), String> {
     Ok(crate::commands::bukti::get_bukti_base64(&db, id).await?)
+}
+
+#[tauri::command]
+async fn delete_bukti(db: tauri::State<'_, crate::db::DbPool>, id: String) -> Result<crate::models::KoreksiRow, String> {
+    Ok(crate::commands::bukti::delete_bukti(&db, id).await?)
 }
 
 #[tauri::command]
@@ -60,8 +73,19 @@ async fn is_no_ba_used(db: tauri::State<'_, crate::db::DbPool>, no_ba: String, e
 }
 
 #[tauri::command]
+#[allow(deprecated)]
 async fn open_bukti_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
     app.shell().open(path, None).map_err(|_| "Gagal membuka file bukti.".to_string())
+}
+
+#[tauri::command]
+async fn create_backup(app: tauri::AppHandle, db: tauri::State<'_, crate::db::DbPool>) -> Result<Option<String>, String> {
+    crate::commands::backup::create_backup(app, &db).await
+}
+
+#[tauri::command]
+async fn restore_backup(app: tauri::AppHandle, db: tauri::State<'_, crate::db::DbPool>) -> Result<Option<String>, String> {
+    crate::commands::backup::restore_backup(app, &db).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -79,9 +103,13 @@ pub fn run() {
             update_koreksi,
             delete_koreksi,
             upload_bukti,
+            pick_and_upload_bukti,
+            delete_bukti,
             get_bukti_base64,
             is_no_ba_used,
             open_bukti_path,
+            create_backup,
+            restore_backup,
         ])
         .setup(|app| {
             // Koneksi DB + migrasi idempoten (T-10: auto-connect saat restart).

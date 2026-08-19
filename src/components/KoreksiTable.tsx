@@ -1,75 +1,76 @@
-// components/KoreksiTable.tsx — tabel utama (REQ-05) — TanStack Table.
-//
-//  Kolom: No. BA, No. TU, OPD, Tanggal, Status, Aksi.
-//  Toolbar: search global (no_ba / no_tu / nama OPD) + filter status.
-//  Urut created_at DESC (di backend). TanStack Table + pagination 20/halaman [ASUMSI].
+// components/KoreksiTable.tsx — tabel utama responsif dengan compact action group & contextual menu.
 
-import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useReactTable,
   getCoreRowModel,
   getPaginationRowModel,
 } from "@tanstack/react-table";
 import { formatTanggal } from "../lib/types";
-import type { KoreksiRow } from "../lib/types";
+import type { KoreksiRow, StatusTandaTerima } from "../lib/types";
 import { StatusBadge } from "./StatusBadge";
-
-const btn = "rounded px-2 py-1 text-xs font-medium border transition-colors";
-
-function ActionBtn({
-  variant,
-  onClick,
-  children,
-}: {
-  variant: "default" | "danger";
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  const cls =
-    variant === "danger"
-      ? `${btn} border-red-200 bg-red-50 text-red-700 hover:bg-red-100`
-      : `${btn} border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50`;
-  return (
-    <button type="button" onClick={onClick} className={cls}>
-      {children}
-    </button>
-  );
-}
+import {
+  Search,
+  Printer,
+  Upload,
+  Eye,
+  Edit2,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  FileQuestion,
+  Plus,
+  RefreshCw,
+  MoreHorizontal,
+  FileUp,
+} from "lucide-react";
 
 const PAGE_SIZE = 20;
 
 const COLUMNS = [
-  { id: "no_ba", header: "No. BA" },
-  { id: "no_tu", header: "No. TU" },
-  { id: "opd", header: "OPD" },
-  { id: "tanggal", header: "Tanggal" },
-  { id: "status", header: "Status" },
-  { id: "aksi", header: "Aksi" },
+  { id: "no_ba", header: "No. BA Koreksi" },
+  { id: "no_tu", header: "No. Surat TU" },
+  { id: "opd", header: "OPD Pengusul" },
+  { id: "tanggal", header: "Tanggal Surat" },
+  { id: "status", header: "Status Sirkulasi" },
+  { id: "aksi", header: "Aksi Dokumen" },
 ];
 
 export function KoreksiTable({
   rows,
+  uploadingId,
   onPrint,
   onUpload,
   onView,
   onEdit,
   onDelete,
+  onAddNew,
 }: {
   rows: KoreksiRow[];
+  uploadingId?: string | null;
   onPrint: (row: KoreksiRow) => void;
   onUpload: (row: KoreksiRow) => void;
   onView: (row: KoreksiRow) => void;
   onEdit: (row: KoreksiRow) => void;
   onDelete: (row: KoreksiRow) => void;
+  onAddNew: () => void;
 }) {
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<
-    "semua" | "MENUNGGU_BUKTI" | "SELESAI"
-  >("semua");
+  const [statusFilter, setStatusFilter] = useState<"semua" | StatusTandaTerima>("semua");
   const [page, setPage] = useState(0);
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
-  // Filter UI (search + status) sebelum masuk TanStack Table.
+  // Tutup dropdown menu baris saat klik di luar
+  useEffect(() => {
+    const handleDocClick = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest(".row-action-menu")) {
+        setActiveMenuId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleDocClick);
+    return () => document.removeEventListener("mousedown", handleDocClick);
+  }, []);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
@@ -78,7 +79,8 @@ export function KoreksiTable({
       return (
         r.no_ba.toLowerCase().includes(q) ||
         r.no_tu.toLowerCase().includes(q) ||
-        r.nama_opd.toLowerCase().includes(q)
+        r.nama_opd.toLowerCase().includes(q) ||
+        r.penjelasan_koreksi.toLowerCase().includes(q)
       );
     });
   }, [rows, search, statusFilter]);
@@ -96,103 +98,327 @@ export function KoreksiTable({
   });
 
   const rowModel = table.getRowModel();
-  const totalPage = Math.max(1, Math.ceil(rowModel.rows.length / PAGE_SIZE));
+  const totalPage = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const canNext = page + 1 < totalPage;
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* Toolbar (NFR-05: satu layar utama) */}
-      <div className="flex items-center gap-2">
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Cari No. BA / No. TU / OPD…"
-          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:outline focus:outline-indigo-500"
-        />
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as any)}
-          className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm"
-        >
-          <option value="semua">Semua</option>
-          <option value="MENUNGGU_BUKTI">MENUNGGU_BUKTI</option>
-          <option value="SELESAI">SELESAI</option>
-        </select>
+    <div className="space-y-4">
+      {/* Toolbar Filter & Pencarian */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="flex flex-1 flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          {/* Input Search */}
+          <div className="relative min-w-[240px] max-w-md flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(0);
+              }}
+              placeholder="Cari No. BA, No. TU, OPD, uraian..."
+              className="w-full rounded-lg border border-slate-200 bg-slate-50/50 py-2 pl-9 pr-4 text-xs sm:text-sm text-slate-800 placeholder-slate-400 transition-all focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-xs text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* Filter Status Pills */}
+          <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-1 text-xs font-medium text-slate-600 overflow-x-auto whitespace-nowrap">
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter("semua");
+                setPage(0);
+              }}
+              className={`rounded-md px-3 py-1.5 transition-colors ${
+                statusFilter === "semua"
+                  ? "bg-white font-semibold text-slate-900 shadow-sm"
+                  : "hover:text-slate-900"
+              }`}
+            >
+              Semua ({rows.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter("MENUNGGU_BUKTI");
+                setPage(0);
+              }}
+              className={`rounded-md px-3 py-1.5 transition-colors ${
+                statusFilter === "MENUNGGU_BUKTI"
+                  ? "bg-white font-semibold text-amber-800 shadow-sm"
+                  : "hover:text-slate-900"
+              }`}
+            >
+              Menunggu Bukti ({rows.filter((r) => r.status === "MENUNGGU_BUKTI").length})
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setStatusFilter("SELESAI");
+                setPage(0);
+              }}
+              className={`rounded-md px-3 py-1.5 transition-colors ${
+                statusFilter === "SELESAI"
+                  ? "bg-white font-semibold text-emerald-800 shadow-sm"
+                  : "hover:text-slate-900"
+              }`}
+            >
+              Selesai ({rows.filter((r) => r.status === "SELESAI").length})
+            </button>
+          </div>
+        </div>
+
+        {/* Info Total Terfilter */}
+        <div className="text-xs text-slate-500 whitespace-nowrap text-right">
+          Menampilkan <span className="font-semibold text-slate-700">{filtered.length}</span> dari{" "}
+          <span className="font-semibold text-slate-700">{rows.length}</span> berkas
+        </div>
       </div>
 
-      {/* Tabel */}
-      <div className="rounded-lg border border-zinc-200 bg-white">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-zinc-50 text-left text-xs uppercase tracking-wider text-zinc-500">
-              {COLUMNS.map((col) => (
-                <th key={col.id} className="px-3 py-2">
-                  {col.header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rowModel.rows.map((row) => {
-              const r = row.original;
-              return (
-                <tr key={r.id} className="border-t border-zinc-200">
-                  <td className="px-3 py-2 font-mono">{r.no_ba}</td>
-                  <td className="px-3 py-2">{r.no_tu}</td>
-                  <td className="px-3 py-2">{r.nama_opd}</td>
-                  <td className="px-3 py-2">{formatTanggal(r.tanggal_surat)}</td>
-                  <td className="px-3 py-2"><StatusBadge status={r.status} /></td>
-                  <td className="px-3 py-2">
-                    <div className="flex flex-wrap gap-1">
-                      <ActionBtn variant="default" onClick={() => onPrint(r)}>Cetak</ActionBtn>
-                      <ActionBtn variant="default" onClick={() => onUpload(r)}>
-                        {r.status === "SELESAI" ? "Ganti Bukti" : "Upload Bukti"}
-                      </ActionBtn>
-                      {r.file_name && (
-                        <ActionBtn variant="default" onClick={() => onView(r)}>Lihat</ActionBtn>
+      {/* Tabel Kontainer Card Responsif */}
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold uppercase tracking-wider text-slate-500 whitespace-nowrap">
+                <th className="px-4 py-3.5 w-36">No. BA Koreksi</th>
+                <th className="px-4 py-3.5 w-36">No. Surat TU</th>
+                <th className="px-4 py-3.5 min-w-[220px]">OPD Pengusul</th>
+                <th className="px-4 py-3.5 w-32">Tanggal Surat</th>
+                <th className="px-4 py-3.5 w-36">Status</th>
+                <th className="px-4 py-3.5 w-44 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {rowModel.rows.map((row) => {
+                const r = row.original;
+                const isUploading = uploadingId === r.id;
+                const isMenuOpen = activeMenuId === r.id;
+
+                return (
+                  <tr
+                    key={r.id}
+                    className="transition-colors hover:bg-indigo-50/30"
+                  >
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      <span className="font-mono text-xs font-bold text-indigo-950">
+                        {r.no_ba}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5 font-mono text-xs text-slate-600 whitespace-nowrap">
+                      {r.no_tu}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <div className="font-medium text-slate-900 leading-snug">{r.nama_opd}</div>
+                      {r.penjelasan_koreksi && (
+                        <div className="max-w-md truncate text-xs text-slate-400 mt-0.5" title={r.penjelasan_koreksi}>
+                          {r.penjelasan_koreksi}
+                        </div>
                       )}
-                      {r.status === "MENUNGGU_BUKTI" && (
-                        <>
-                          <ActionBtn variant="default" onClick={() => onEdit(r)}>Edit</ActionBtn>
-                          <ActionBtn variant="danger" onClick={() => onDelete(r)}>Hapus</ActionBtn>
-                        </>
+                    </td>
+                    <td className="px-4 py-3.5 text-xs text-slate-600 whitespace-nowrap">
+                      {formatTanggal(r.tanggal_surat)}
+                    </td>
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      <StatusBadge status={r.status} />
+                    </td>
+                    <td className="px-4 py-3.5 text-right whitespace-nowrap">
+                      {/* Compact Action Group */}
+                      <div className="inline-flex items-center justify-end gap-1.5">
+                        {/* Tombol Cetak (Aksi Primer Universal) */}
+                        <button
+                          type="button"
+                          onClick={() => onPrint(r)}
+                          title="Cetak Lembar Ekspedisi Tunggal"
+                          className="h-8 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:text-indigo-600"
+                        >
+                          <Printer className="h-3.5 w-3.5" />
+                          <span>Cetak</span>
+                        </button>
+
+                        {/* Tombol Kontekstual Status: Upload Bukti vs Lihat Bukti */}
+                        {r.status === "MENUNGGU_BUKTI" ? (
+                          <button
+                            type="button"
+                            disabled={isUploading}
+                            onClick={() => onUpload(r)}
+                            title="Unggah scan tanda terima ekspedisi"
+                            className="h-8 inline-flex items-center gap-1.5 rounded-lg border border-indigo-600 bg-indigo-600 px-3 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-50"
+                          >
+                            {isUploading ? (
+                              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Upload className="h-3.5 w-3.5" />
+                            )}
+                            <span>{isUploading ? "Mengunggah…" : "Upload Bukti"}</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onView(r)}
+                            title="Lihat File Bukti Scan"
+                            className="h-8 inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 shadow-sm transition-colors hover:bg-emerald-100"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            <span>Lihat Bukti</span>
+                          </button>
+                        )}
+
+                        {/* Dropdown Menu Opsi Tambahan (•••) */}
+                        <div className="relative row-action-menu">
+                          <button
+                            type="button"
+                            onClick={() => setActiveMenuId(isMenuOpen ? null : r.id)}
+                            title="Opsi lainnya"
+                            className={`h-8 w-8 inline-flex items-center justify-center rounded-lg border text-slate-500 transition-colors shadow-sm ${
+                              isMenuOpen
+                                ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                                : "border-slate-200 bg-white hover:bg-slate-50 hover:text-slate-800"
+                            }`}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+
+                          {/* Popup Menu */}
+                          {isMenuOpen && (
+                            <div className="absolute right-0 top-full z-50 mt-1 w-44 rounded-xl border border-slate-200 bg-white py-1 shadow-xl text-left animate-in fade-in-50 zoom-in-95">
+                              {/* Edit Data */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  onEdit(r);
+                                }}
+                                className="flex w-full items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                              >
+                                <Edit2 className="h-3.5 w-3.5 text-slate-400" />
+                                <span>Edit Data</span>
+                              </button>
+
+                              {/* Ganti Bukti (Jika status SELESAI) */}
+                              {r.status === "SELESAI" && (
+                                <button
+                                  type="button"
+                                  disabled={isUploading}
+                                  onClick={() => {
+                                    setActiveMenuId(null);
+                                    onUpload(r);
+                                  }}
+                                  className="flex w-full items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                                >
+                                  <FileUp className="h-3.5 w-3.5 text-slate-400" />
+                                  <span>Ganti Bukti Scan</span>
+                                </button>
+                              )}
+
+                              <div className="my-1 border-t border-slate-100" />
+
+                              {/* Hapus Data */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveMenuId(null);
+                                  onDelete(r);
+                                }}
+                                className="flex w-full items-center gap-2 px-3.5 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                                <span>Hapus Berkas</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {/* Tampilan Kosong (Empty State) */}
+              {rowModel.rows.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-16 text-center">
+                    <div className="mx-auto flex max-w-sm flex-col items-center justify-center">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
+                        <FileQuestion className="h-7 w-7" />
+                      </div>
+                      <h3 className="mt-3 text-sm font-bold text-slate-800">
+                        {search || statusFilter !== "semua"
+                          ? "Data Tidak Ditemukan"
+                          : "Belum Ada Berkas BA Koreksi"}
+                      </h3>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {search || statusFilter !== "semua"
+                          ? "Coba ubah kata kunci pencarian atau reset filter status."
+                          : "Mulai dengan mencatat Berita Acara Koreksi BMD baru untuk mencetak tanda terima ekspedisi."}
+                      </p>
+                      {search || statusFilter !== "semua" ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSearch("");
+                            setStatusFilter("semua");
+                          }}
+                          className="mt-4 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          Reset Filter
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={onAddNew}
+                          className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-md hover:bg-indigo-700"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Tambah Koreksi Pertama
+                        </button>
                       )}
                     </div>
                   </td>
                 </tr>
-              );
-            })}
-            {rowModel.rows.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-zinc-500">
-                  Tidak ada record.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-      {/* Pagination (ASUMSI: 20 baris/halaman) */}
-      <div className="flex items-center gap-2 text-xs text-zinc-600">
-        <span>Halaman {page + 1} / {totalPage}</span>
-        <button
-          type="button"
-          disabled={page === 0}
-          onClick={() => setPage((p) => p - 1)}
-          className="rounded border border-zinc-300 bg-white px-2 py-1 text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-        >
-          ←
-        </button>
-        <button
-          type="button"
-          disabled={!canNext}
-          onClick={() => setPage((p) => p + 1)}
-          className="rounded border border-zinc-300 bg-white px-2 py-1 text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-        >
-          →
-        </button>
+        {/* Footer Pagination */}
+        {filtered.length > 0 && (
+          <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50/50 px-4 py-3 text-xs text-slate-600">
+            <div>
+              Halaman <span className="font-semibold text-slate-800">{page + 1}</span> dari{" "}
+              <span className="font-semibold text-slate-800">{totalPage}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                disabled={page === 0}
+                onClick={() => setPage((p) => p - 1)}
+                className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                Sebelumnya
+              </button>
+              <button
+                type="button"
+                disabled={!canNext}
+                onClick={() => setPage((p) => p + 1)}
+                className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-40"
+              >
+                Selanjutnya
+                <ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

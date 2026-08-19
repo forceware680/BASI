@@ -1,4 +1,4 @@
-// commands/bukti.rs — upload bukti tunggal + viewer (REQ-04/05).
+// commands/bukti.rs — upload, view, dan hapus bukti tunggal (REQ-04/05).
 
 use crate::models::KoreksiRow;
 use sqlx::PgPool;
@@ -47,7 +47,7 @@ pub async fn upload_bukti(
     let target_str = target.to_string_lossy().to_string();
     // 4) hapus file lama jika ada (BR-04)
     let old: (Option<String>,) = sqlx::query_as(
-        "SELECT file_path FROM koreksi_bmd WHERE id=$1",
+        "SELECT file_path FROM koreksi_bmd WHERE id=$1::uuid",
     )
     .bind(&id)
     .fetch_one(db)
@@ -64,7 +64,7 @@ pub async fn upload_bukti(
         .unwrap_or_default();
     let now = chrono::Utc::now().to_rfc3339();
     sqlx::query(
-        "UPDATE koreksi_bmd SET file_path=$1, file_name=$2, file_type=$3, uploaded_at=$4, status='SELESAI' WHERE id=$5",
+        "UPDATE koreksi_bmd SET file_path=$1, file_name=$2, file_type=$3, uploaded_at=$4::timestamptz, status='SELESAI' WHERE id=$5::uuid",
     )
     .bind(&target_str)
     .bind(&file_name)
@@ -77,10 +77,59 @@ pub async fn upload_bukti(
     crate::commands::koreksi::get_koreksi(db, &id).await
 }
 
+/// Native file picker + upload bukti (langsung membuka Windows native dialog tanpa hambatan izin JS).
+#[allow(dead_code)]
+pub async fn pick_and_upload_bukti(
+    app: tauri::AppHandle,
+    db: &PgPool,
+    id: String,
+) -> Result<Option<KoreksiRow>, String> {
+    let file = rfd::AsyncFileDialog::new()
+        .set_title("Pilih File Bukti Scan (PDF / JPG / PNG)")
+        .add_filter("Dokumen & Gambar (*.pdf, *.jpg, *.png)", &["pdf", "jpg", "jpeg", "png"])
+        .pick_file()
+        .await;
+
+    match file {
+        Some(handle) => {
+            let path_str = handle.path().to_string_lossy().to_string();
+            let row = upload_bukti(app, db, id, path_str).await?;
+            Ok(Some(row))
+        }
+        None => Ok(None), // User membatalkan pemilihan file
+    }
+}
+
+/// Hapus file bukti scan: hapus file fisik di storage, kosongkan kolom file di DB,
+/// dan kembalikan status tanda terima menjadi MENUNGGU_BUKTI.
+pub async fn delete_bukti(db: &PgPool, id: String) -> Result<KoreksiRow, String> {
+    let old: (Option<String>,) = sqlx::query_as(
+        "SELECT file_path FROM koreksi_bmd WHERE id=$1::uuid",
+    )
+    .bind(&id)
+    .fetch_one(db)
+    .await
+    .map_err(|_| "Record tidak ditemukan.".to_string())?;
+
+    if let Some(old_path) = old.0 {
+        crate::storage::remove_file(&old_path);
+    }
+
+    sqlx::query(
+        "UPDATE koreksi_bmd SET file_path=NULL, file_name=NULL, file_type=NULL, uploaded_at=NULL, status='MENUNGGU_BUKTI' WHERE id=$1::uuid",
+    )
+    .bind(&id)
+    .execute(db)
+    .await
+    .map_err(db_err)?;
+
+    crate::commands::koreksi::get_koreksi(db, &id).await
+}
+
 /// Baca bukti sebagai data URL (viewer). Mengembalikan (mime, data_url).
 pub async fn get_bukti_base64(db: &PgPool, id: String) -> Result<(String, String), String> {
     let fp: (Option<String>,) = sqlx::query_as(
-        "SELECT file_path FROM koreksi_bmd WHERE id=$1",
+        "SELECT file_path FROM koreksi_bmd WHERE id=$1::uuid",
     )
     .bind(&id)
     .fetch_one(db)

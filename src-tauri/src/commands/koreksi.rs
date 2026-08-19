@@ -38,10 +38,7 @@ fn to_row(r: Row) -> KoreksiRow {
     }
 }
 
-// SQL tunggal-baris: JANGAN pakai line-continuation `\` di string SQL —
-// `\<newline>` di Rust memakan whitespace baris berikutnya, sehingga token
-// menggabung (mis. `k.file_path` + `FROM` -> `k.file_pathFROM`) dan PostgreSQL
-// gagal parse ("syntax error at or near \"k\""). Selalu satu baris.
+// SQL tunggal-baris
 const ROWS_SQL: &str = "SELECT k.id::text, k.no_tu, k.no_ba, k.opd_id, o.nama_opd, k.tanggal_surat::text, k.penjelasan_koreksi, k.status::text, k.file_name, k.file_type, k.uploaded_at::text, k.created_at::text, k.file_path FROM koreksi_bmd k LEFT JOIN master_opd o ON o.id = k.opd_id";
 
 fn db_err(e: sqlx::Error) -> String {
@@ -56,22 +53,20 @@ pub async fn list_koreksi(
 ) -> Result<Vec<KoreksiRow>, String> {
     let s = search.unwrap_or_default();
     let st = status.unwrap_or_default();
-    // `k.status = $2` would be "operator does not exist: status_tanda_terima = text"
-    // because $2 is a bound text param; cast the enum column to text instead.
     let q = format!("{ROWS_SQL} WHERE ( $1 = '' OR lower(k.no_ba) LIKE lower($3) OR lower(k.no_tu) LIKE lower($3) OR lower(o.nama_opd) LIKE lower($3) ) AND ( $2 = '' OR k.status::text = $2 ) ORDER BY k.created_at DESC");
     let rows: Vec<Row> = sqlx::query_as(&q)
-    .bind(&s)
-    .bind(&st)
-    .bind(format!("%{}%", s.trim()))
-    .fetch_all(db)
-    .await
-    .map_err(db_err)?;
+        .bind(&s)
+        .bind(&st)
+        .bind(format!("%{}%", s.trim()))
+        .fetch_all(db)
+        .await
+        .map_err(db_err)?;
     Ok(rows.into_iter().map(to_row).collect())
 }
 
 /// Ambil satu baris (prefill edit / preview cetak).
 pub async fn get_koreksi(db: &PgPool, id: &str) -> Result<KoreksiRow, String> {
-    let r: Row = sqlx::query_as(&format!("{ROWS_SQL} WHERE k.id = $1"))
+    let r: Row = sqlx::query_as(&format!("{ROWS_SQL} WHERE k.id = $1::uuid"))
         .bind(id)
         .fetch_one(db)
         .await
@@ -94,7 +89,7 @@ pub async fn create_koreksi(
         return Err("OPD tidak ditemukan.".to_string());
     }
     let id: String = sqlx::query_scalar(
-        "INSERT INTO koreksi_bmd (no_tu, no_ba, opd_id, tanggal_surat, penjelasan_koreksi) VALUES ($1,$2,$3,$4,$5) RETURNING id::text",
+        "INSERT INTO koreksi_bmd (no_tu, no_ba, opd_id, tanggal_surat, penjelasan_koreksi) VALUES ($1, $2, $3, $4::date, $5) RETURNING id::text",
     )
     .bind(&payload.no_tu)
     .bind(&payload.no_ba)
@@ -119,7 +114,7 @@ pub async fn update_koreksi(
     }
     crate::models::validate(&payload)?;
     sqlx::query(
-        "UPDATE koreksi_bmd SET no_tu=$1, no_ba=$2, opd_id=$3, tanggal_surat=$4, penjelasan_koreksi=$5 WHERE id=$6",
+        "UPDATE koreksi_bmd SET no_tu=$1, no_ba=$2, opd_id=$3, tanggal_surat=$4::date, penjelasan_koreksi=$5 WHERE id=$6::uuid",
     )
     .bind(&payload.no_tu)
     .bind(&payload.no_ba)
@@ -133,16 +128,13 @@ pub async fn update_koreksi(
     get_koreksi(db, &id).await
 }
 
-/// Hapus record. Tolak jika SELESAI (BR-05). Hapus juga file bukti dari storage.
+/// Hapus record koreksi dan file bukti fisik yang terkait jika ada.
 pub async fn delete_koreksi(db: &PgPool, id: String) -> Result<(), String> {
     let row = get_koreksi(db, &id).await?;
-    if row.status == StatusTandaTerima::Selesai {
-        return Err("Record sudah SELESAI; tidak dapat dihapus (BR-05).".to_string());
-    }
     if let Some(fp) = row.file_path {
         crate::storage::remove_file(&fp);
     }
-    sqlx::query("DELETE FROM koreksi_bmd WHERE id=$1")
+    sqlx::query("DELETE FROM koreksi_bmd WHERE id=$1::uuid")
         .bind(&id)
         .execute(db)
         .await
@@ -157,7 +149,7 @@ pub async fn is_no_ba_used(
     exclude: Option<String>,
 ) -> Result<bool, String> {
     let n: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM koreksi_bmd WHERE lower(no_ba)=lower($1) AND ($2::uuid IS NULL OR id <> $2)",
+        "SELECT COUNT(*) FROM koreksi_bmd WHERE lower(no_ba)=lower($1) AND ($2::uuid IS NULL OR id <> $2::uuid)",
     )
     .bind(&no_ba)
     .bind(exclude)

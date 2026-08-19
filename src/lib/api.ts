@@ -1,7 +1,4 @@
 // lib/api.ts — wrapper invoke() per Tauri command.
-//
-//  Semua command backend (src-tauri/src/commands). Pesan error (Bahasa
-//  Indonesia) dikirim oleh Rust; wrapper tinggal forward.
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
@@ -58,6 +55,16 @@ export async function uploadBukti(
   return invoke("upload_bukti", { id, source_path });
 }
 
+export async function pickAndUploadBukti(
+  id: string,
+): Promise<KoreksiRow | null> {
+  return invoke("pick_and_upload_bukti", { id });
+}
+
+export async function deleteBukti(id: string): Promise<KoreksiRow> {
+  return invoke("delete_bukti", { id });
+}
+
 export async function isNoBaUsed(
   no_ba: string,
   exclude?: string,
@@ -73,4 +80,12 @@ export async function getBuktiBase64(
   id: string,
 ): Promise<{ 0: string; 1: string }> {
   return invoke("get_bukti_base64", { id });
+}
+
+export async function createBackup(): Promise<string | null> {
+  return invoke("create_backup");
+}
+
+export async function restoreBackup(): Promise<string | null> {
+  return invoke("restore_backup");
 }
