@@ -52,8 +52,8 @@ Microservice ringan berbasis **Node.js (Express) & Docker** untuk mengelola peny
 
 ## 📂 Contoh Request Upload via cURL
 ```bash
-curl -X POST http://45.198.155.126:3000/api/bukti/upload \
-  -H "x-api-key: simbasi_secret_key_bpkad_magelang" \
+curl -X POST http://<DOMAIN_ATAU_IP_SERVER>/api/bukti/upload \
+  -H "x-api-key: <YOUR_API_KEY>" \
   -F "koreksi_id=019520b2-xxxx-xxxx-xxxx-xxxxxxxxxxxx" \
   -F "file=@/path/to/scan_bukti.pdf"
 ```
@@ -68,7 +68,7 @@ Response JSON:
   "file_size": 245120,
   "stored_filename": "1724119999_scan_bukti.pdf",
   "koreksi_id": "019520b2-xxxx",
-  "url": "http://45.198.155.126:3000/api/bukti/019520b2-xxxx/1724119999_scan_bukti.pdf",
+  "url": "http://<DOMAIN_ATAU_IP_SERVER>/api/bukti/019520b2-xxxx/1724119999_scan_bukti.pdf",
   "uploaded_at": "2026-08-20T09:40:00.000Z"
 }
 ```
