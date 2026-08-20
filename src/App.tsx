@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { KoreksiListPage } from "./pages/KoreksiListPage";
 import logoKotaMagelang from "./assets/logo-kota-magelang.png";
 import {
-  Database,
   FileSpreadsheet,
   Archive,
   Terminal,

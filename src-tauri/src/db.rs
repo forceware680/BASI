@@ -110,6 +110,12 @@ pub async fn connect_with_url(url: &str) -> Result<DbPool, String> {
     Ok(pool)
 }
 
+/// Helper default connect dari DEFAULT_DATABASE_URL / env
+pub async fn connect() -> Result<DbPool, String> {
+    let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DATABASE_URL.to_string());
+    connect_with_url(&url).await
+}
+
 /// Helper untuk menguji konektivitas database tanpa menerapkan migrasi.
 pub async fn test_connection(url: &str) -> Result<String, String> {
     let opts = PgConnectOptions::from_str(url)
