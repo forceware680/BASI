@@ -48,41 +48,17 @@ export function BuktiViewerDialog({
     setZoom(1);
     setLoading(true);
 
-    let createdBlobUrl: string | null = null;
-
     getBuktiBase64(row.id)
-      .then(async (res) => {
+      .then((res) => {
         if (cancelled) return;
-        const [mimeType, sourceUrl] = res;
-        setMime(mimeType);
-
-        if (sourceUrl.startsWith("http://") || sourceUrl.startsWith("https://")) {
-          // Unduh langsung sebagai Blob (Biner cepat) & ubah ke local blob: URL
-          // Ini membebaskan WebView2 dari batasan iframe X-Frame-Options / Refused to connect
-          try {
-            const resp = await fetch(sourceUrl);
-            if (!resp.ok) throw new Error(`Server mengembalikan status HTTP ${resp.status}`);
-            const blob = await resp.blob();
-            if (cancelled) return;
-            const blobUrl = URL.createObjectURL(blob);
-            createdBlobUrl = blobUrl;
-            setDataUrl(blobUrl);
-          } catch (fetchErr) {
-            console.warn("[VIEWER] Fallback to direct URL:", fetchErr);
-            if (!cancelled) setDataUrl(sourceUrl);
-          }
-        } else {
-          setDataUrl(sourceUrl);
-        }
+        setMime(res[0]);
+        setDataUrl(res[1]);
       })
       .catch((e) => !cancelled && setError(String(e)))
       .finally(() => !cancelled && setLoading(false));
 
     return () => {
       cancelled = true;
-      if (createdBlobUrl) {
-        URL.revokeObjectURL(createdBlobUrl);
-      }
     };
   }, [row]);
 
