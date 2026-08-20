@@ -78,6 +78,38 @@ pub async fn create_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option<
         }
     }
 
+    // Jika Mode Online, ambil juga berkas-berkas bukti dari File API Service yang belum ada di zip
+    let cfg = crate::config::load_config(&app);
+    if cfg.mode == "online" && !cfg.storage_api_url.trim().is_empty() {
+        let base_url = cfg.storage_api_url.trim_end_matches('/');
+        let client = reqwest::Client::new();
+        for k in &backup_data.koreksi_list {
+            if let Some(ref fp) = k.file_path {
+                let clean_rel = fp.trim_start_matches("bukti/").trim_start_matches('/');
+                let parts: Vec<&str> = clean_rel.split('/').collect();
+                if parts.len() >= 2 {
+                    let k_id = parts[0];
+                    let fname = parts[1];
+                    let zip_entry_name = format!("bukti/{k_id}/{fname}");
+                    
+                    let download_url = format!("{base_url}/api/bukti/{k_id}/{fname}");
+                    let mut req = client.get(&download_url);
+                    if !cfg.storage_api_key.trim().is_empty() {
+                        req = req.header("x-api-key", cfg.storage_api_key.trim());
+                    }
+                    if let Ok(resp) = req.send().await {
+                        if resp.status().is_success() {
+                            if let Ok(bytes) = resp.bytes().await {
+                                let _ = zip.start_file(&zip_entry_name, options);
+                                let _ = zip.write_all(&bytes);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     zip.finish()
         .map_err(|e| format!("Gagal menyelesaikan pembuatan arsip backup. ({e})"))?;
 
@@ -174,14 +206,20 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
     fs::create_dir_all(&bukti_root)
         .map_err(|e| format!("Gagal membuat folder bukti lokal. ({e})"))?;
 
+    let cfg = crate::config::load_config(&app);
+
     for k in &backup_data.koreksi_list {
-        let local_file_path = if let Some(ref fp_old) = k.file_path {
+        let file_path_val = if let Some(ref fp_old) = k.file_path {
             let fname = Path::new(fp_old)
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
             if !fname.is_empty() {
-                Some(bukti_root.join(&k.id).join(&fname).to_string_lossy().to_string())
+                if cfg.mode == "online" {
+                    Some(format!("bukti/{}/{}", k.id, fname))
+                } else {
+                    Some(bukti_root.join(&k.id).join(&fname).to_string_lossy().to_string())
+                }
             } else {
                 None
             }
@@ -211,7 +249,7 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
         .bind(&k.tanggal_surat)
         .bind(&k.penjelasan_koreksi)
         .bind(k.status.to_db())
-        .bind(&local_file_path)
+        .bind(&file_path_val)
         .bind(&k.file_name)
         .bind(&k.file_type)
         .bind(&k.uploaded_at)
@@ -221,18 +259,38 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
     }
 
     // 4. Ekstrak seluruh file bukti dari zip ke {app_data_dir}/bukti/
+    let mut extracted_files: Vec<(String, std::path::PathBuf)> = Vec::new();
     for i in 0..archive.len() {
         if let Ok(mut zip_file) = archive.by_index(i) {
             let name = zip_file.name().to_string();
             if name.starts_with("bukti/") && !name.ends_with('/') {
-                let rel = &name["bukti/".len()..];
-                let out_path = bukti_root.join(rel);
+                let rel = name["bukti/".len()..].to_string();
+                let out_path = bukti_root.join(&rel);
                 if let Some(parent) = out_path.parent() {
                     let _ = fs::create_dir_all(parent);
                 }
                 if let Ok(mut outfile) = File::create(&out_path) {
                     let _ = std::io::copy(&mut zip_file, &mut outfile);
+                    extracted_files.push((rel, out_path));
                 }
+            }
+        }
+    }
+    drop(archive);
+
+    // 5. Jika mode online, upload berkas yang baru diekstrak ke File API Service
+    if cfg.mode == "online" && !cfg.storage_api_url.trim().is_empty() {
+        for (rel, path) in extracted_files {
+            let parts: Vec<&str> = rel.split('/').collect();
+            if parts.len() >= 2 {
+                let k_id = parts[0];
+                let _ = crate::storage::upload_to_remote(
+                    &cfg.storage_api_url,
+                    &cfg.storage_api_key,
+                    k_id,
+                    &path.to_string_lossy(),
+                )
+                .await;
             }
         }
     }

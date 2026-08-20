@@ -1,21 +1,36 @@
-// db.rs — koneksi PostgreSQL + auto-create database & migrasi idempoten saat startup.
+// db.rs — koneksi PostgreSQL + auto-create database & migrasi idempoten saat startup / switch runtime.
 
 use sqlx::postgres::PgConnectOptions;
 use sqlx::{Connection, PgConnection};
 use std::str::FromStr;
+use tokio::sync::RwLock;
 
-/// Default DATABASE_URL bila env tidak diset.
-const DEFAULT_DATABASE_URL: &str =
+/// Default DATABASE_URL bila env/config tidak diset.
+pub const DEFAULT_DATABASE_URL: &str =
     "postgresql://postgres:postgres@localhost:5432/sim_ba_koreksi";
 
-/// Pool PostgreSQL (Tauri state).
+/// Pool PostgreSQL.
 pub type DbPool = sqlx::PgPool;
 
-/// Memastikan database `sim_ba_koreksi` sudah ada di server PostgreSQL; jika belum, buat otomatis.
+/// State pembungkus Connection Pool yang thread-safe dan bisa diganti dinamis (hot-switch).
+pub struct DbState(pub RwLock<DbPool>);
+
+impl DbState {
+    pub async fn pool(&self) -> DbPool {
+        self.0.read().await.clone()
+    }
+
+    pub async fn set_pool(&self, new_pool: DbPool) {
+        let mut w = self.0.write().await;
+        *w = new_pool;
+    }
+}
+
+/// Memastikan database target sudah ada di server PostgreSQL; jika belum, buat otomatis.
 async fn ensure_database_exists(db_url: &str) -> Result<(), String> {
     let opts = PgConnectOptions::from_str(db_url)
         .map_err(|e| format!("URL database tidak valid: {e}"))?;
-    
+
     let target_db = opts.get_database().unwrap_or("sim_ba_koreksi").to_string();
     println!("[DB] Memeriksa ketersediaan database '{}' di port {}...", target_db, opts.get_port());
 
@@ -35,7 +50,7 @@ async fn ensure_database_exists(db_url: &str) -> Result<(), String> {
         Err(e) => {
             eprintln!("[DB ERROR] Gagal menyambung ke server PostgreSQL: {e}");
             return Err(format!(
-                "Gagal menyambung ke server PostgreSQL lokal. Pastikan layanan PostgreSQL sedang berjalan di port {}. ({e})",
+                "Gagal menyambung ke server PostgreSQL. Pastikan host dan port {} dapat diakses. ({e})",
                 opts.get_port()
             ));
         }
@@ -68,15 +83,13 @@ async fn ensure_database_exists(db_url: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Buat pool dari `DATABASE_URL`, jalankan migrasi idempoten.
-pub async fn connect() -> Result<DbPool, String> {
-    let url = std::env::var("DATABASE_URL").unwrap_or_else(|_| DEFAULT_DATABASE_URL.to_string());
-    
+/// Buat pool dari URL spesifik, jalankan migrasi idempoten.
+pub async fn connect_with_url(url: &str) -> Result<DbPool, String> {
     // Pastikan database ada sebelum membuat pool
-    ensure_database_exists(&url).await?;
+    ensure_database_exists(url).await?;
 
     println!("[DB] Menginisialisasi Connection Pool ke PostgreSQL...");
-    let pool = sqlx::PgPool::connect(&url)
+    let pool = sqlx::PgPool::connect(url)
         .await
         .map_err(|e| {
             eprintln!("[DB ERROR] Gagal inisialisasi pool: {e}");
@@ -95,4 +108,26 @@ pub async fn connect() -> Result<DbPool, String> {
 
     println!("[DB] Migrasi skema selesai. Semua tabel & seeder OPD siap.");
     Ok(pool)
+}
+
+/// Helper untuk menguji konektivitas database tanpa menerapkan migrasi.
+pub async fn test_connection(url: &str) -> Result<String, String> {
+    let opts = PgConnectOptions::from_str(url)
+        .map_err(|e| format!("Format URL PostgreSQL tidak valid: {e}"))?;
+
+    let host = opts.get_host().to_string();
+    let port = opts.get_port();
+    let db_name = opts.get_database().unwrap_or("sim_ba_koreksi").to_string();
+
+    let mut conn = PgConnection::connect_with(&opts)
+        .await
+        .map_err(|e| format!("Gagal menghubungi database ({host}:{port}/{db_name}): {e}"))?;
+
+    let version: String = sqlx::query_scalar("SELECT version()")
+        .fetch_one(&mut conn)
+        .await
+        .unwrap_or_else(|_| "PostgreSQL".to_string());
+
+    let _ = conn.close().await;
+    Ok(format!("Koneksi sukses ke {host}:{port}/{db_name}. ({})", version.split(',').next().unwrap_or("")))
 }

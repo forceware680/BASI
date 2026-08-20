@@ -219,10 +219,21 @@ pub async fn upload_bukti(
     if meta.len() > MAX_SIZE {
         return Err(format!("Ukuran file ({} MB) melebihi batas maksimal 150 MB.", meta.len() / (1024 * 1024)));
     }
-    // 3) salin ke storage
-    let target = crate::storage::copy_bukti(&app, &id, &source_path)
-        .map_err(|e| format!("Gagal menyimpan file bukti. Coba lagi. ({e})"))?;
-    let target_str = target.to_string_lossy().to_string();
+    // 3) Simpan ke storage (Online via File API atau Offline via AppData lokal)
+    let cfg = crate::config::load_config(&app);
+    let (target_str, file_name, mime) = if cfg.mode == "online" && !cfg.storage_api_url.trim().is_empty() {
+        crate::storage::upload_to_remote(&cfg.storage_api_url, &cfg.storage_api_key, &id, &source_path).await?
+    } else {
+        let target = crate::storage::copy_bukti(&app, &id, &source_path)
+            .map_err(|e| format!("Gagal menyimpan file bukti. Coba lagi. ({e})"))?;
+        let fname = std::path::Path::new(&source_path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let m = mime_of(&source_path).unwrap_or("application/octet-stream").to_string();
+        (target.to_string_lossy().to_string(), fname, m)
+    };
+
     // 4) hapus file lama jika ada (BR-04)
     let old: (Option<String>,) = sqlx::query_as(
         "SELECT file_path FROM koreksi_bmd WHERE id=$1::uuid",
@@ -232,14 +243,13 @@ pub async fn upload_bukti(
     .await
     .map_err(|_| "Record tidak ditemukan.".to_string())?;
     if let Some(old) = old.0 {
-        crate::storage::remove_file(&old);
+        if cfg.mode == "online" && !cfg.storage_api_url.trim().is_empty() && (old.starts_with("bukti/") || old.starts_with("http")) {
+            let _ = crate::storage::delete_remote_file(&cfg.storage_api_url, &cfg.storage_api_key, &old).await;
+        } else {
+            crate::storage::remove_file(&old);
+        }
     }
     // 5) update record
-    let mime = mime_of(&source_path).unwrap_or("application/octet-stream").to_string();
-    let file_name = std::path::Path::new(&source_path)
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
     let now = chrono::Utc::now().to_rfc3339();
     sqlx::query(
         "UPDATE koreksi_bmd SET file_path=$1, file_name=$2, file_type=$3, uploaded_at=$4::timestamptz, status='SELESAI' WHERE id=$5::uuid",
@@ -587,7 +597,7 @@ pub async fn scan_and_upload_bukti(
 
 /// Hapus file bukti scan: hapus file fisik di storage, kosongkan kolom file di DB,
 /// dan kembalikan status tanda terima menjadi MENUNGGU_BUKTI.
-pub async fn delete_bukti(db: &PgPool, id: String) -> Result<KoreksiRow, String> {
+pub async fn delete_bukti(app: tauri::AppHandle, db: &PgPool, id: String) -> Result<KoreksiRow, String> {
     let old: (Option<String>,) = sqlx::query_as(
         "SELECT file_path FROM koreksi_bmd WHERE id=$1::uuid",
     )
@@ -597,7 +607,12 @@ pub async fn delete_bukti(db: &PgPool, id: String) -> Result<KoreksiRow, String>
     .map_err(|_| "Record tidak ditemukan.".to_string())?;
 
     if let Some(old_path) = old.0 {
-        crate::storage::remove_file(&old_path);
+        let cfg = crate::config::load_config(&app);
+        if cfg.mode == "online" && !cfg.storage_api_url.trim().is_empty() && (old_path.starts_with("bukti/") || old_path.starts_with("http")) {
+            let _ = crate::storage::delete_remote_file(&cfg.storage_api_url, &cfg.storage_api_key, &old_path).await;
+        } else {
+            crate::storage::remove_file(&old_path);
+        }
     }
 
     sqlx::query(
@@ -613,7 +628,7 @@ pub async fn delete_bukti(db: &PgPool, id: String) -> Result<KoreksiRow, String>
 }
 
 /// Baca bukti sebagai data URL (viewer). Mengembalikan (mime, data_url).
-pub async fn get_bukti_base64(db: &PgPool, id: String) -> Result<(String, String), String> {
+pub async fn get_bukti_base64(app: tauri::AppHandle, db: &PgPool, id: String) -> Result<(String, String), String> {
     let fp: (Option<String>,) = sqlx::query_as(
         "SELECT file_path FROM koreksi_bmd WHERE id=$1::uuid",
     )
@@ -622,6 +637,12 @@ pub async fn get_bukti_base64(db: &PgPool, id: String) -> Result<(String, String
     .await
     .map_err(|_| "Record tidak ditemukan.".to_string())?;
     let fp = fp.0.ok_or("Belum ada file bukti.".to_string())?;
-    crate::storage::read_bukti_as_data_url(&fp)
-        .map_err(|_| "File bukti tidak dapat dibaca.".to_string())
+    
+    let cfg = crate::config::load_config(&app);
+    if cfg.mode == "online" && !cfg.storage_api_url.trim().is_empty() && (fp.starts_with("bukti/") || fp.starts_with("http")) {
+        crate::storage::read_remote_as_data_url(&cfg.storage_api_url, &cfg.storage_api_key, &fp).await
+    } else {
+        crate::storage::read_bukti_as_data_url(&fp)
+            .map_err(|e| format!("File bukti tidak dapat dibaca: {e}"))
+    }
 }

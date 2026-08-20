@@ -1,11 +1,20 @@
-// App.tsx — Layout Utama SIMBASI BMD dengan Theme Dark Mode, Logo Pemkot Magelang, status PostgreSQL (Portable / Standalone), dan toggle konsol debug.
-
 import { useEffect, useState } from "react";
 import { KoreksiListPage } from "./pages/KoreksiListPage";
 import logoKotaMagelang from "./assets/logo-kota-magelang.png";
-import { Database, FileSpreadsheet, Archive, Terminal, Moon, Sun } from "lucide-react";
+import {
+  Database,
+  FileSpreadsheet,
+  Archive,
+  Terminal,
+  Moon,
+  Sun,
+  Settings,
+  Cloud,
+  HardDrive,
+} from "lucide-react";
 import { BackupRestoreDialog } from "./components/BackupRestoreDialog";
 import { EksporLaporanDialog } from "./components/EksporLaporanDialog";
+import { SettingsDialog } from "./components/SettingsDialog";
 import { RekapitulasiPrintSheet } from "./components/print/RekapitulasiPrintSheet";
 import type { KoreksiRow } from "./lib/types";
 import { getDbInfo, toggleConsole } from "./lib/api";
@@ -16,6 +25,7 @@ export default function App() {
   const { isDark, toggleTheme } = useTheme();
   const [backupOpen, setBackupOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [consoleVisible, setConsoleVisible] = useState(false);
   const [dbInfo, setDbInfo] = useState<DbInfo | null>(null);
   const [reportPrint, setReportPrint] = useState<{
@@ -26,14 +36,14 @@ export default function App() {
     opdLabel: string;
   } | null>(null);
 
-  // Trigger reload data saat restore berhasil
+  // Trigger reload data saat restore berhasil atau koneksi diubah
   const [refreshKey, setRefreshKey] = useState(0);
   const [allRows, setAllRows] = useState<KoreksiRow[]>([]);
 
   // Muat status mode database saat aplikasi startup
   useEffect(() => {
     getDbInfo().then(setDbInfo).catch(console.error);
-  }, []);
+  }, [refreshKey]);
 
   const handleToggleConsole = async () => {
     const next = !consoleVisible;
@@ -94,6 +104,17 @@ export default function App() {
               <span className="hidden lg:inline">Cadangan Data</span>
             </button>
 
+            {/* Tombol Pengaturan Koneksi & Database */}
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              title="Pengaturan Koneksi Database (Offline / Online)"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 sm:px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700/80 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+            >
+              <Settings className="h-4 w-4 text-slate-600 dark:text-slate-300 shrink-0" />
+              <span className="hidden lg:inline">Koneksi</span>
+            </button>
+
             {/* Tombol Toggle Tema Dark / Light Mode */}
             <button
               type="button"
@@ -123,32 +144,27 @@ export default function App() {
               <span className="hidden xl:inline">CMD</span>
             </button>
 
-            {/* Status Mode Database (Portable / Standalone) */}
-            <div
+            {/* Status Mode Database (Offline / Online) — Klik untuk Buka Pengaturan */}
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
               title={
                 dbInfo
-                  ? `Tersambung ke PostgreSQL (${dbInfo.mode}) pada ${dbInfo.host}:${dbInfo.port}/${dbInfo.database}`
+                  ? `Mode: ${dbInfo.mode}\nHost: ${dbInfo.host}:${dbInfo.port}\nDatabase: ${dbInfo.database}\n(Klik untuk mengubah pengaturan)`
                   : "Memeriksa status koneksi database..."
               }
-              className="hidden md:flex items-center gap-1.5 sm:gap-2 rounded-full border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900 px-2.5 sm:px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 shadow-sm cursor-default select-none transition-colors shrink-0"
+              className="hidden md:flex items-center gap-1.5 sm:gap-2 rounded-full border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900 px-2.5 sm:px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-white dark:hover:bg-slate-800 cursor-pointer select-none transition-all shrink-0"
             >
-              <Database className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span className="font-semibold text-slate-700 dark:text-slate-200 hidden xl:inline">
-                PostgreSQL
-              </span>
-              {dbInfo && (
-                <span
-                  className={`rounded-md px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wider ${
-                    dbInfo.mode === "Portable"
-                      ? "bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80"
-                      : "bg-indigo-100 text-indigo-800 dark:bg-indigo-950/80 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80"
-                  }`}
-                >
-                  {dbInfo.mode}
-                </span>
+              {dbInfo?.mode.includes("Online") ? (
+                <Cloud className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              ) : (
+                <HardDrive className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
               )}
+              <span className="font-semibold text-slate-700 dark:text-slate-200 hidden xl:inline">
+                {dbInfo?.mode || "Database"}
+              </span>
               <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)] shrink-0" />
-            </div>
+            </button>
           </div>
         </div>
       </header>
@@ -184,6 +200,15 @@ export default function App() {
         onClose={() => setBackupOpen(false)}
         onRestored={() => {
           setBackupOpen(false);
+          setRefreshKey((prev) => prev + 1);
+        }}
+      />
+
+      {/* Modal Pengaturan Koneksi Database & File API */}
+      <SettingsDialog
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onSaved={() => {
           setRefreshKey((prev) => prev + 1);
         }}
       />
