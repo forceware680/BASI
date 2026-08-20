@@ -24,6 +24,9 @@ if (!fs.existsSync(UPLOAD_DIR)) {
 // Middleware dasar
 app.use(helmet({
   crossOriginResourcePolicy: false, // Memungkinkan akses gambar/PDF dari frontend Tauri
+  crossOriginEmbedderPolicy: false,
+  frameguard: false, // Memungkinkan embedding PDF/Image di iframe WebView
+  contentSecurityPolicy: false,
 }));
 app.use(cors({
   origin: '*',
