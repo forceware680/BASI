@@ -173,6 +173,7 @@ app.get('/api/bukti/:koreksi_id/:filename', (req, res) => {
   const contentType = mimeMap[ext] || 'application/octet-stream';
   res.setHeader('Content-Type', contentType);
   res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+  res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=3600');
 
   const stream = fs.createReadStream(filePath);
   stream.pipe(res);

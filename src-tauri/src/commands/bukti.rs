@@ -627,7 +627,8 @@ pub async fn delete_bukti(app: tauri::AppHandle, db: &PgPool, id: String) -> Res
     crate::commands::koreksi::get_koreksi(db, &id).await
 }
 
-/// Baca bukti sebagai data URL (viewer). Mengembalikan (mime, data_url).
+/// Baca bukti: jika Mode Online, kembalikan URL streaming langsung untuk performa instan tanpa bottleneck Base64.
+/// Jika Mode Offline, kembalikan Data URL Base64 dari berkas lokal.
 pub async fn get_bukti_base64(app: tauri::AppHandle, db: &PgPool, id: String) -> Result<(String, String), String> {
     let fp: (Option<String>,) = sqlx::query_as(
         "SELECT file_path FROM koreksi_bmd WHERE id=$1::uuid",
@@ -638,11 +639,26 @@ pub async fn get_bukti_base64(app: tauri::AppHandle, db: &PgPool, id: String) ->
     .map_err(|_| "Record tidak ditemukan.".to_string())?;
     let fp = fp.0.ok_or("Belum ada file bukti.".to_string())?;
     
+    let fp_norm = fp.replace('\\', "/");
+    let mime = mime_of(&fp_norm).unwrap_or("application/octet-stream").to_string();
     let cfg = crate::config::load_config(&app);
-    if cfg.mode == "online" && !cfg.storage_api_url.trim().is_empty() && (fp.starts_with("bukti/") || fp.starts_with("http")) {
-        crate::storage::read_remote_as_data_url(&cfg.storage_api_url, &cfg.storage_api_key, &fp).await
-    } else {
-        crate::storage::read_bukti_as_data_url(&fp)
-            .map_err(|e| format!("File bukti tidak dapat dibaca: {e}"))
+
+    // MODE ONLINE: Kembalikan URL HTTP streaming langsung (Super Cepat, Tanpa Beban Base64)
+    if cfg.mode == "online" && !cfg.storage_api_url.trim().is_empty() {
+        let base_url = cfg.storage_api_url.trim_end_matches('/');
+        let clean_rel = fp_norm.trim_start_matches("bukti/").trim_start_matches('/');
+        let parts: Vec<&str> = clean_rel.split('/').collect();
+        if parts.len() >= 2 {
+            let k_id = parts[0];
+            let fname = parts[1];
+            let stream_url = format!("{base_url}/api/bukti/{k_id}/{fname}");
+            return Ok((mime, stream_url));
+        } else if fp_norm.starts_with("http://") || fp_norm.starts_with("https://") {
+            return Ok((mime, fp_norm));
+        }
     }
+
+    // MODE OFFLINE: Baca dari filesystem lokal
+    crate::storage::read_bukti_as_data_url(&fp)
+        .map_err(|e| format!("File bukti tidak dapat dibaca: {e}"))
 }

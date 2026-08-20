@@ -262,11 +262,68 @@ async fn is_no_tu_used(
 
 #[tauri::command]
 async fn open_bukti_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    if path.starts_with("http://") || path.starts_with("https://") {
-        app.shell().open(path, None).map_err(|_| "Gagal membuka tautan bukti.".to_string())
-    } else {
-        app.shell().open(path, None).map_err(|_| "Gagal membuka file bukti.".to_string())
+    let cfg = crate::config::load_config(&app);
+    let path_norm = path.replace('\\', "/");
+
+    // Jika path berformat remote (bukti/{id}/{file}) atau aplikasi sedang dalam Mode Online
+    let is_remote_path = path_norm.starts_with("bukti/")
+        || (cfg.mode == "online" && !path_norm.starts_with("C:") && !path_norm.starts_with("c:") && !path_norm.starts_with("/"));
+
+    if is_remote_path && !cfg.storage_api_url.trim().is_empty() {
+        let clean_rel = path_norm.trim_start_matches("bukti/").trim_start_matches('/');
+        let parts: Vec<&str> = clean_rel.split('/').collect();
+        if parts.len() >= 2 {
+            let k_id = parts[0];
+            let fname = parts[1];
+            let base_url = cfg.storage_api_url.trim_end_matches('/');
+            let download_url = format!("{base_url}/api/bukti/{k_id}/{fname}");
+
+            // Simpan ke direktori cache sementara di komputer pengguna
+            let temp_dir = std::env::temp_dir().join("simbasi_cache");
+            let _ = std::fs::create_dir_all(&temp_dir);
+            let local_cached_file = temp_dir.join(format!("{}_{}", k_id, fname));
+
+            // Jika belum ada di cache, unduh dari server Cloud
+            if !local_cached_file.exists() {
+                let client = reqwest::Client::new();
+                let mut req = client.get(&download_url);
+                if !cfg.storage_api_key.trim().is_empty() {
+                    req = req.header("x-api-key", cfg.storage_api_key.trim());
+                }
+                if let Ok(resp) = req.send().await {
+                    if resp.status().is_success() {
+                        if let Ok(bytes) = resp.bytes().await {
+                            let _ = std::fs::write(&local_cached_file, &bytes);
+                        }
+                    }
+                }
+            }
+
+            // Buka berkas fisik di aplikasi default Windows (Adobe Acrobat, Foxit, Windows Photo, dll)
+            if local_cached_file.exists() {
+                return app
+                    .shell()
+                    .open(local_cached_file.to_string_lossy().to_string(), None)
+                    .map_err(|e| format!("Gagal membuka berkas di OS: {e}"));
+            }
+
+            // Fallback: buka link di browser default
+            return app
+                .shell()
+                .open(download_url, None)
+                .map_err(|e| format!("Gagal membuka tautan berkas di browser: {e}"));
+        }
+    } else if path_norm.starts_with("http://") || path_norm.starts_with("https://") {
+        return app
+            .shell()
+            .open(path_norm, None)
+            .map_err(|e| format!("Gagal membuka tautan di browser: {e}"));
     }
+
+    // Mode Offline: Buka berkas dari penyimpanan lokal Windows
+    app.shell()
+        .open(path, None)
+        .map_err(|e| format!("Gagal membuka berkas bukti di OS: {e}"))
 }
 
 #[tauri::command]
