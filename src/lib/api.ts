@@ -8,11 +8,37 @@ import type {
 } from "./types";
 
 export type DbInfo = {
-  mode: "Portable" | "Standalone";
+  mode: string;
   host: string;
   port: number;
   database: string;
 };
+
+export interface AppConfig {
+  mode: "offline" | "online";
+  database_url: string;
+  storage_api_url: string;
+  storage_api_key: string;
+}
+
+export async function getAppConfig(): Promise<AppConfig> {
+  return invoke("get_app_config");
+}
+
+export async function saveAppConfig(config: AppConfig): Promise<void> {
+  return invoke("save_app_config", { config });
+}
+
+export async function testDbConnection(url: string): Promise<string> {
+  return invoke("test_db_connection", { url });
+}
+
+export async function testStorageApiConnection(
+  url: string,
+  apiKey?: string,
+): Promise<string> {
+  return invoke("test_storage_api_connection", { url, apiKey: apiKey || null });
+}
 
 export async function toggleConsole(show: boolean): Promise<boolean> {
   return invoke("toggle_console", { show });

@@ -1,4 +1,5 @@
 // commands/backup.rs — Backup & Restore Penuh Data + File Bukti (.zip).
+// Mendukung pemisahan bersih antara Mode Offline (Lokal) dan Mode Online (Cloud Server).
 
 use crate::models::{KoreksiRow, Opd};
 use sqlx::PgPool;
@@ -22,10 +23,10 @@ fn db_err(e: sqlx::Error) -> String {
 
 /// Buat backup .zip berisi database JSON + seluruh file scan bukti.
 pub async fn create_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option<String>, String> {
-    // 1. Ambil data master_opd
+    // 1. Ambil data master_opd dari database yang aktif
     let opd_rows = crate::commands::opd::list_opd(db, None).await?;
 
-    // 2. Ambil data koreksi_bmd
+    // 2. Ambil data koreksi_bmd dari database yang aktif
     let koreksi_list = crate::commands::koreksi::list_koreksi(db, None, None).await?;
 
     let backup_data = BackupPayload {
@@ -38,7 +39,7 @@ pub async fn create_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option<
     let json_bytes = serde_json::to_vec_pretty(&backup_data)
         .map_err(|e| format!("Gagal memformat data backup. ({e})"))?;
 
-    // 3. Buka dialog penyimpanan file (.zip)
+    // 3. Buka dialog penyimpanan file (.zip) di komputer pengguna
     let default_name = format!(
         "backup_sim_ba_koreksi_{}.zip",
         chrono::Local::now().format("%Y%m%d_%H%M%S")
@@ -70,12 +71,74 @@ pub async fn create_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option<
     zip.write_all(&json_bytes)
         .map_err(|e| format!("Gagal menulis data JSON. ({e})"))?;
 
-    // Tulis semua file bukti fisik di {app_data_dir}/bukti/ ke dalam zip
-    if let Ok(app_dir) = crate::storage::app_root(&app) {
-        let bukti_dir = app_dir.join("bukti");
-        if bukti_dir.exists() {
-            add_dir_to_zip(&mut zip, &bukti_dir, &bukti_dir, options)?;
+    let cfg = crate::config::load_config(&app);
+
+    // 5. Tangani berkas bukti sesuai MODE AKTIF
+    if cfg.mode == "offline" {
+        // MODE OFFLINE: Ambil file bukti fisik dari folder %APPDATA%/bukti/ komputer lokal
+        println!("[BACKUP] Mode Offline: Mengambil berkas bukti dari folder lokal...");
+        if let Ok(app_dir) = crate::storage::app_root(&app) {
+            let bukti_dir = app_dir.join("bukti");
+            if bukti_dir.exists() {
+                add_dir_to_zip(&mut zip, &bukti_dir, &bukti_dir, options)?;
+            }
         }
+    } else if !cfg.storage_api_url.trim().is_empty() {
+        // MODE ONLINE: Unduh seluruh berkas bukti fisik dari File API Service Cloud ke dalam ZIP
+        let base_url = cfg.storage_api_url.trim_end_matches('/');
+        let client = reqwest::Client::new();
+        println!("[BACKUP] Mode Online: Mengunduh berkas scan dari server Cloud: {}", base_url);
+
+        let mut downloaded_count = 0;
+        for k in &backup_data.koreksi_list {
+            if let Some(ref fp) = k.file_path {
+                let fp_norm = fp.replace('\\', "/");
+                let fname = Path::new(&fp_norm)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default();
+
+                if !fname.is_empty() {
+                    let k_id = &k.id;
+                    let zip_entry_name = format!("bukti/{k_id}/{fname}");
+                    let download_url = format!("{base_url}/api/bukti/{k_id}/{fname}");
+
+                    let mut req = client.get(&download_url);
+                    if !cfg.storage_api_key.trim().is_empty() {
+                        req = req.header("x-api-key", cfg.storage_api_key.trim());
+                    }
+
+                    match req.send().await {
+                        Ok(resp) => {
+                            if resp.status().is_success() {
+                                if let Ok(bytes) = resp.bytes().await {
+                                    if zip.start_file(&zip_entry_name, options).is_ok()
+                                        && zip.write_all(&bytes).is_ok()
+                                    {
+                                        downloaded_count += 1;
+                                        println!(
+                                            "[BACKUP] Berhasil mengunduh & menambahkan: {} ({} bytes)",
+                                            zip_entry_name,
+                                            bytes.len()
+                                        );
+                                    }
+                                }
+                            } else {
+                                eprintln!(
+                                    "[BACKUP WARN] File API mengembalikan status {}: {}",
+                                    resp.status(),
+                                    download_url
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("[BACKUP ERROR] Gagal mengunduh {}: {}", download_url, e);
+                        }
+                    }
+                }
+            }
+        }
+        println!("[BACKUP] Selesai mengunduh {} berkas dari Cloud Server.", downloaded_count);
     }
 
     zip.finish()
@@ -146,7 +209,7 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
     let backup_data: BackupPayload = serde_json::from_str(&json_content)
         .map_err(|e| format!("Format data JSON tidak cocok. ({e})"))?;
 
-    // 2. Restore Master OPD
+    // 2. Restore Master OPD ke database aktif
     for opd in &backup_data.opd_list {
         sqlx::query(
             "INSERT INTO master_opd (id, nama_opd, singkatan, is_active)
@@ -167,27 +230,47 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
         .execute(db)
         .await;
 
-    // 3. Restore Koreksi BMD
+    // 3. Restore Koreksi BMD ke database aktif
     let app_dir = crate::storage::app_root(&app)
         .map_err(|e| format!("Gagal mengakses folder data aplikasi. ({e})"))?;
     let bukti_root = app_dir.join("bukti");
     fs::create_dir_all(&bukti_root)
         .map_err(|e| format!("Gagal membuat folder bukti lokal. ({e})"))?;
 
+    let cfg = crate::config::load_config(&app);
+
     for k in &backup_data.koreksi_list {
-        let local_file_path = if let Some(ref fp_old) = k.file_path {
-            let fname = Path::new(fp_old)
+        let file_path_val = if let Some(ref fp_old) = k.file_path {
+            let fp_norm = fp_old.replace('\\', "/");
+            let fname = Path::new(&fp_norm)
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
             if !fname.is_empty() {
-                Some(bukti_root.join(&k.id).join(&fname).to_string_lossy().to_string())
+                if cfg.mode == "online" {
+                    Some(format!("bukti/{}/{}", k.id, fname))
+                } else {
+                    Some(bukti_root.join(&k.id).join(&fname).to_string_lossy().to_string())
+                }
             } else {
                 None
             }
         } else {
             None
         };
+
+        // Bersihkan data lama di database target yang memiliki No BA atau No TU yang sama
+        // namun berbeda ID UUID agar tidak melanggar unique constraint idx_koreksi_no_tu_unique / idx_koreksi_no_ba_unique
+        let _ = sqlx::query(
+            "DELETE FROM koreksi_bmd
+             WHERE (lower(trim(no_ba)) = lower(trim($1)) OR lower(trim(no_tu)) = lower(trim($2)))
+               AND id <> $3::uuid",
+        )
+        .bind(&k.no_ba)
+        .bind(&k.no_tu)
+        .bind(&k.id)
+        .execute(db)
+        .await;
 
         sqlx::query(
             "INSERT INTO koreksi_bmd (id, no_tu, no_ba, opd_id, tanggal_surat, penjelasan_koreksi, status, file_path, file_name, file_type, uploaded_at)
@@ -211,7 +294,7 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
         .bind(&k.tanggal_surat)
         .bind(&k.penjelasan_koreksi)
         .bind(k.status.to_db())
-        .bind(&local_file_path)
+        .bind(&file_path_val)
         .bind(&k.file_name)
         .bind(&k.file_type)
         .bind(&k.uploaded_at)
@@ -221,17 +304,63 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
     }
 
     // 4. Ekstrak seluruh file bukti dari zip ke {app_data_dir}/bukti/
+    let mut extracted_files: Vec<(String, std::path::PathBuf)> = Vec::new();
     for i in 0..archive.len() {
         if let Ok(mut zip_file) = archive.by_index(i) {
             let name = zip_file.name().to_string();
             if name.starts_with("bukti/") && !name.ends_with('/') {
-                let rel = &name["bukti/".len()..];
-                let out_path = bukti_root.join(rel);
+                let rel = name["bukti/".len()..].to_string();
+                let out_path = bukti_root.join(&rel);
                 if let Some(parent) = out_path.parent() {
                     let _ = fs::create_dir_all(parent);
                 }
                 if let Ok(mut outfile) = File::create(&out_path) {
                     let _ = std::io::copy(&mut zip_file, &mut outfile);
+                    extracted_files.push((rel, out_path));
+                }
+            }
+        }
+    }
+    drop(archive);
+
+    // 5. Jika mode online, upload berkas yang baru diekstrak ke File API Service Cloud
+    if cfg.mode == "online" && !cfg.storage_api_url.trim().is_empty() {
+        println!("[RESTORE] Mengunggah berkas-berkas hasil pemulihan ke Cloud Server...");
+        let cache_dir = std::env::temp_dir().join("simbasi_cache");
+        let _ = std::fs::create_dir_all(&cache_dir);
+
+        for (rel, path) in extracted_files {
+            let rel_norm = rel.replace('\\', "/");
+            let parts: Vec<&str> = rel_norm.split('/').collect();
+            if parts.len() >= 2 {
+                let k_id = parts[0];
+                let orig_fname = parts[1];
+
+                // Simpan juga ke cache lokal
+                let _ = std::fs::copy(&path, cache_dir.join(format!("{}_{}", k_id, orig_fname)));
+
+                match crate::storage::upload_to_remote_exact(
+                    &cfg.storage_api_url,
+                    &cfg.storage_api_key,
+                    k_id,
+                    &path.to_string_lossy(),
+                )
+                .await {
+                    Ok((remote_path, fname, ftype)) => {
+                        println!("[RESTORE] Sukses mengunggah berkas: {}", remote_path);
+                        let _ = sqlx::query(
+                            "UPDATE koreksi_bmd SET file_path = $1, file_name = $2, file_type = $3 WHERE id = $4::uuid",
+                        )
+                        .bind(&remote_path)
+                        .bind(&fname)
+                        .bind(&ftype)
+                        .bind(k_id)
+                        .execute(db)
+                        .await;
+                    }
+                    Err(e) => {
+                        eprintln!("[RESTORE ERROR] Gagal mengunggah berkas {}: {}", orig_fname, e);
+                    }
                 }
             }
         }

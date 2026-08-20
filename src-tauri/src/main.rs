@@ -1,10 +1,11 @@
-// main.rs — SIMBASI BMD (Tauri v2) dengan integrasi Portable PostgreSQL auto-managed & status info.
+// main.rs — SIMBASI BMD (Tauri v2) dengan integrasi Portable PostgreSQL & Cloud PostgreSQL Switcher.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(dead_code)]
 #![allow(deprecated)]
 
 mod commands;
+mod config;
 mod db;
 mod models;
 mod pgsql_daemon;
@@ -19,7 +20,7 @@ pub struct PortableDbState(pub Mutex<Option<PathBuf>>);
 
 #[derive(serde::Serialize)]
 pub struct DbInfo {
-    pub mode: String, // "Portable" | "Standalone"
+    pub mode: String, // "Offline" | "Online"
     pub host: String,
     pub port: u16,
     pub database: String,
@@ -49,55 +50,135 @@ fn toggle_console(show: bool) -> Result<bool, String> {
 }
 
 #[tauri::command]
-fn get_db_info(state: tauri::State<'_, PortableDbState>) -> Result<DbInfo, String> {
-    let guard = state.0.lock().map_err(|e| e.to_string())?;
-    let is_portable = guard.is_some();
-    Ok(DbInfo {
-        mode: if is_portable { "Portable".to_string() } else { "Standalone".to_string() },
-        host: "127.0.0.1".to_string(),
-        port: 5432,
-        database: "sim_ba_koreksi".to_string(),
-    })
+fn get_app_config(app: tauri::AppHandle) -> Result<crate::config::AppConfig, String> {
+    Ok(crate::config::load_config(&app))
 }
 
 #[tauri::command]
-async fn list_opd(db: tauri::State<'_, crate::db::DbPool>, search: Option<String>) -> Result<Vec<crate::models::Opd>, String> {
+async fn save_app_config(
+    app: tauri::AppHandle,
+    db_state: tauri::State<'_, crate::db::DbState>,
+    config: crate::config::AppConfig,
+) -> Result<(), String> {
+    // 1. Simpan ke berkas config.json
+    crate::config::save_config(&app, &config)?;
+
+    // 2. Hubungkan ulang DbPool ke target database baru & jalankan migrasi
+    let new_pool = crate::db::connect_with_url(&config.database_url).await?;
+    db_state.set_pool(new_pool).await;
+
+    println!(
+        "[CONFIG] Konfigurasi berhasil disimpan dan diterapkan. Mode: {}",
+        config.mode
+    );
+    Ok(())
+}
+
+#[tauri::command]
+async fn test_db_connection(url: String) -> Result<String, String> {
+    crate::db::test_connection(&url).await
+}
+
+#[tauri::command]
+async fn test_storage_api_connection(url: String, api_key: Option<String>) -> Result<String, String> {
+    crate::storage::test_storage_api(&url, &api_key.unwrap_or_default()).await
+}
+
+#[tauri::command]
+fn get_db_info(app: tauri::AppHandle) -> Result<DbInfo, String> {
+    let cfg = crate::config::load_config(&app);
+    let opts = sqlx::postgres::PgConnectOptions::from_str(&cfg.database_url)
+        .unwrap_or_default();
+
+    Ok(DbInfo {
+        mode: if cfg.mode == "online" {
+            "Online (Cloud)".to_string()
+        } else {
+            "Offline (Lokal)".to_string()
+        },
+        host: opts.get_host().to_string(),
+        port: opts.get_port(),
+        database: opts.get_database().unwrap_or("sim_ba_koreksi").to_string(),
+    })
+}
+
+use std::str::FromStr;
+
+#[tauri::command]
+async fn list_opd(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    search: Option<String>,
+) -> Result<Vec<crate::models::Opd>, String> {
+    let db = db_state.pool().await;
     Ok(crate::commands::opd::list_opd(&db, search).await?)
 }
 
 #[tauri::command]
-async fn create_opd(db: tauri::State<'_, crate::db::DbPool>, nama_opd: String, singkatan: Option<String>) -> Result<crate::models::Opd, String> {
+async fn create_opd(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    nama_opd: String,
+    singkatan: Option<String>,
+) -> Result<crate::models::Opd, String> {
+    let db = db_state.pool().await;
     Ok(crate::commands::opd::create_opd(&db, nama_opd, singkatan).await?)
 }
 
 #[tauri::command]
-async fn list_koreksi(db: tauri::State<'_, crate::db::DbPool>, search: Option<String>, status: Option<String>) -> Result<Vec<crate::models::KoreksiRow>, String> {
+async fn list_koreksi(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    search: Option<String>,
+    status: Option<String>,
+) -> Result<Vec<crate::models::KoreksiRow>, String> {
+    let db = db_state.pool().await;
     Ok(crate::commands::koreksi::list_koreksi(&db, search, status).await?)
 }
 
 #[tauri::command]
-async fn get_koreksi(db: tauri::State<'_, crate::db::DbPool>, id: String) -> Result<crate::models::KoreksiRow, String> {
+async fn get_koreksi(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    id: String,
+) -> Result<crate::models::KoreksiRow, String> {
+    let db = db_state.pool().await;
     Ok(crate::commands::koreksi::get_koreksi(&db, &id).await?)
 }
 
 #[tauri::command]
-async fn create_koreksi(db: tauri::State<'_, crate::db::DbPool>, payload: crate::models::CreateKoreksiDto) -> Result<crate::models::KoreksiRow, String> {
+async fn create_koreksi(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    payload: crate::models::CreateKoreksiDto,
+) -> Result<crate::models::KoreksiRow, String> {
+    let db = db_state.pool().await;
     Ok(crate::commands::koreksi::create_koreksi(&db, payload).await?)
 }
 
 #[tauri::command]
-async fn update_koreksi(db: tauri::State<'_, crate::db::DbPool>, id: String, payload: crate::models::CreateKoreksiDto) -> Result<crate::models::KoreksiRow, String> {
+async fn update_koreksi(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    id: String,
+    payload: crate::models::CreateKoreksiDto,
+) -> Result<crate::models::KoreksiRow, String> {
+    let db = db_state.pool().await;
     Ok(crate::commands::koreksi::update_koreksi(&db, id, payload).await?)
 }
 
 #[tauri::command]
-async fn delete_koreksi(db: tauri::State<'_, crate::db::DbPool>, id: String) -> Result<(), String> {
+async fn delete_koreksi(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    id: String,
+) -> Result<(), String> {
+    let db = db_state.pool().await;
     crate::commands::koreksi::delete_koreksi(&db, id).await?;
     Ok(())
 }
 
 #[tauri::command]
-async fn upload_bukti(app: tauri::AppHandle, db: tauri::State<'_, crate::db::DbPool>, id: String, source_path: String) -> Result<crate::models::KoreksiRow, String> {
+async fn upload_bukti(
+    app: tauri::AppHandle,
+    db_state: tauri::State<'_, crate::db::DbState>,
+    id: String,
+    source_path: String,
+) -> Result<crate::models::KoreksiRow, String> {
+    let db = db_state.pool().await;
     Ok(crate::commands::bukti::upload_bukti(app, &db, id, source_path).await?)
 }
 
@@ -114,7 +195,12 @@ async fn scan_to_staging(
 }
 
 #[tauri::command]
-async fn pick_and_upload_bukti(app: tauri::AppHandle, db: tauri::State<'_, crate::db::DbPool>, id: String) -> Result<Option<crate::models::KoreksiRow>, String> {
+async fn pick_and_upload_bukti(
+    app: tauri::AppHandle,
+    db_state: tauri::State<'_, crate::db::DbState>,
+    id: String,
+) -> Result<Option<crate::models::KoreksiRow>, String> {
+    let db = db_state.pool().await;
     Ok(crate::commands::bukti::pick_and_upload_bukti(app, &db, id).await?)
 }
 
@@ -126,46 +212,135 @@ async fn list_scanners() -> Result<Vec<crate::commands::bukti::ScannerDeviceInfo
 #[tauri::command]
 async fn scan_and_upload_bukti(
     app: tauri::AppHandle,
-    db: tauri::State<'_, crate::db::DbPool>,
+    db_state: tauri::State<'_, crate::db::DbState>,
     id: String,
     options: Option<crate::commands::bukti::ScanOptions>,
 ) -> Result<Option<crate::models::KoreksiRow>, String> {
+    let db = db_state.pool().await;
     Ok(crate::commands::bukti::scan_and_upload_bukti(app, &db, id, options).await?)
 }
 
 #[tauri::command]
-async fn get_bukti_base64(db: tauri::State<'_, crate::db::DbPool>, id: String) -> Result<(String, String), String> {
-    Ok(crate::commands::bukti::get_bukti_base64(&db, id).await?)
+async fn get_bukti_base64(
+    app: tauri::AppHandle,
+    db_state: tauri::State<'_, crate::db::DbState>,
+    id: String,
+) -> Result<(String, String), String> {
+    let db = db_state.pool().await;
+    Ok(crate::commands::bukti::get_bukti_base64(app, &db, id).await?)
 }
 
 #[tauri::command]
-async fn delete_bukti(db: tauri::State<'_, crate::db::DbPool>, id: String) -> Result<crate::models::KoreksiRow, String> {
-    Ok(crate::commands::bukti::delete_bukti(&db, id).await?)
+async fn delete_bukti(
+    app: tauri::AppHandle,
+    db_state: tauri::State<'_, crate::db::DbState>,
+    id: String,
+) -> Result<crate::models::KoreksiRow, String> {
+    let db = db_state.pool().await;
+    Ok(crate::commands::bukti::delete_bukti(app, &db, id).await?)
 }
 
 #[tauri::command]
-async fn is_no_ba_used(db: tauri::State<'_, crate::db::DbPool>, no_ba: String, exclude: Option<String>) -> Result<bool, String> {
+async fn is_no_ba_used(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    no_ba: String,
+    exclude: Option<String>,
+) -> Result<bool, String> {
+    let db = db_state.pool().await;
     Ok(crate::commands::koreksi::is_no_ba_used(&db, no_ba, exclude).await?)
 }
 
 #[tauri::command]
-async fn is_no_tu_used(db: tauri::State<'_, crate::db::DbPool>, no_tu: String, exclude: Option<String>) -> Result<bool, String> {
+async fn is_no_tu_used(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    no_tu: String,
+    exclude: Option<String>,
+) -> Result<bool, String> {
+    let db = db_state.pool().await;
     Ok(crate::commands::koreksi::is_no_tu_used(&db, no_tu, exclude).await?)
 }
 
 #[tauri::command]
-#[allow(deprecated)]
 async fn open_bukti_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    app.shell().open(path, None).map_err(|_| "Gagal membuka file bukti.".to_string())
+    let cfg = crate::config::load_config(&app);
+    let path_norm = path.replace('\\', "/");
+
+    // Jika path berformat remote (bukti/{id}/{file}) atau aplikasi sedang dalam Mode Online
+    let is_remote_path = path_norm.starts_with("bukti/")
+        || (cfg.mode == "online" && !path_norm.starts_with("C:") && !path_norm.starts_with("c:") && !path_norm.starts_with("/"));
+
+    if is_remote_path && !cfg.storage_api_url.trim().is_empty() {
+        let clean_rel = path_norm.trim_start_matches("bukti/").trim_start_matches('/');
+        let parts: Vec<&str> = clean_rel.split('/').collect();
+        if parts.len() >= 2 {
+            let k_id = parts[0];
+            let fname = parts[1];
+            let base_url = cfg.storage_api_url.trim_end_matches('/');
+            let download_url = format!("{base_url}/api/bukti/{k_id}/{fname}");
+
+            // Simpan ke direktori cache sementara di komputer pengguna
+            let temp_dir = std::env::temp_dir().join("simbasi_cache");
+            let _ = std::fs::create_dir_all(&temp_dir);
+            let local_cached_file = temp_dir.join(format!("{}_{}", k_id, fname));
+
+            // Jika belum ada di cache, unduh dari server Cloud
+            if !local_cached_file.exists() {
+                let client = reqwest::Client::new();
+                let mut req = client.get(&download_url);
+                if !cfg.storage_api_key.trim().is_empty() {
+                    req = req.header("x-api-key", cfg.storage_api_key.trim());
+                }
+                if let Ok(resp) = req.send().await {
+                    if resp.status().is_success() {
+                        if let Ok(bytes) = resp.bytes().await {
+                            let _ = std::fs::write(&local_cached_file, &bytes);
+                        }
+                    }
+                }
+            }
+
+            // Buka berkas fisik di aplikasi default Windows (Adobe Acrobat, Foxit, Windows Photo, dll)
+            if local_cached_file.exists() {
+                return app
+                    .shell()
+                    .open(local_cached_file.to_string_lossy().to_string(), None)
+                    .map_err(|e| format!("Gagal membuka berkas di OS: {e}"));
+            }
+
+            // Fallback: buka link di browser default
+            return app
+                .shell()
+                .open(download_url, None)
+                .map_err(|e| format!("Gagal membuka tautan berkas di browser: {e}"));
+        }
+    } else if path_norm.starts_with("http://") || path_norm.starts_with("https://") {
+        return app
+            .shell()
+            .open(path_norm, None)
+            .map_err(|e| format!("Gagal membuka tautan di browser: {e}"));
+    }
+
+    // Mode Offline: Buka berkas dari penyimpanan lokal Windows
+    app.shell()
+        .open(path, None)
+        .map_err(|e| format!("Gagal membuka berkas bukti di OS: {e}"))
 }
 
 #[tauri::command]
-async fn create_backup(app: tauri::AppHandle, db: tauri::State<'_, crate::db::DbPool>) -> Result<Option<String>, String> {
+async fn create_backup(
+    app: tauri::AppHandle,
+    db_state: tauri::State<'_, crate::db::DbState>,
+) -> Result<Option<String>, String> {
+    let db = db_state.pool().await;
     crate::commands::backup::create_backup(app, &db).await
 }
 
 #[tauri::command]
-async fn restore_backup(app: tauri::AppHandle, db: tauri::State<'_, crate::db::DbPool>) -> Result<Option<String>, String> {
+async fn restore_backup(
+    app: tauri::AppHandle,
+    db_state: tauri::State<'_, crate::db::DbState>,
+) -> Result<Option<String>, String> {
+    let db = db_state.pool().await;
     crate::commands::backup::restore_backup(app, &db).await
 }
 
@@ -177,6 +352,10 @@ pub fn run() {
         .plugin(tauri_plugin_log::Builder::new().level(tauri_plugin_log::log::LevelFilter::Info).build())
         .invoke_handler(tauri::generate_handler![
             toggle_console,
+            get_app_config,
+            save_app_config,
+            test_db_connection,
+            test_storage_api_connection,
             get_db_info,
             list_opd,
             create_opd,
@@ -215,21 +394,29 @@ pub fn run() {
                 }
             }
 
-            // Auto-detect dan jalankan PostgreSQL portable jika port 5432 belum aktif
-            let portable_dir = match crate::pgsql_daemon::ensure_pgsql_running(app.handle()) {
-                Ok(d) => d,
-                Err(e) => {
-                    println!("[PGSQL ERROR] {e}");
-                    None
+            // Muat konfigurasi aplikasi
+            let config = crate::config::load_config(app.handle());
+
+            // Jika mode offline, jalankan Portable PostgreSQL jika port 5432 belum aktif
+            let portable_dir = if config.mode == "offline" {
+                match crate::pgsql_daemon::ensure_pgsql_running(app.handle()) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        println!("[PGSQL ERROR] {e}");
+                        None
+                    }
                 }
+            } else {
+                None
             };
             app.manage(PortableDbState(Mutex::new(portable_dir)));
 
             // Koneksi DB + auto-create database & migrasi idempoten saat startup
-            let pool = tauri::async_runtime::block_on(crate::db::connect())
-                .expect("Tidak dapat terhubung ke database. Periksa layanan PostgreSQL.");
-            println!("[APP] Inisialisasi aplikasi selesai. Siap melayani permintaan.");
-            app.manage(pool);
+            let pool = tauri::async_runtime::block_on(crate::db::connect_with_url(&config.database_url))
+                .expect("Tidak dapat terhubung ke database. Periksa layanan PostgreSQL atau konfigurasi database.");
+            println!("[APP] Inisialisasi koneksi database selesai. Mode: {}", config.mode);
+            
+            app.manage(crate::db::DbState(tokio::sync::RwLock::new(pool)));
             Ok(())
         })
         .on_window_event(|window, event| {
