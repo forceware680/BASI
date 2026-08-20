@@ -99,12 +99,32 @@ struct Base64ApiResponse {
     pub data_url: String,
 }
 
-/// Unggah file ke remote File API Service (Mode Online).
+/// Unggah file ke remote File API Service (Mode Online) dengan nama unik otomatis.
 pub async fn upload_to_remote(
     storage_api_url: &str,
     api_key: &str,
     koreksi_id: &str,
     source_path: &str,
+) -> Result<(String, String, String), String> {
+    upload_to_remote_internal(storage_api_url, api_key, koreksi_id, source_path, false).await
+}
+
+/// Unggah file ke remote File API Service (Mode Online) dengan mempertahankan nama persis (digunakan saat restore).
+pub async fn upload_to_remote_exact(
+    storage_api_url: &str,
+    api_key: &str,
+    koreksi_id: &str,
+    source_path: &str,
+) -> Result<(String, String, String), String> {
+    upload_to_remote_internal(storage_api_url, api_key, koreksi_id, source_path, true).await
+}
+
+async fn upload_to_remote_internal(
+    storage_api_url: &str,
+    api_key: &str,
+    koreksi_id: &str,
+    source_path: &str,
+    keep_name: bool,
 ) -> Result<(String, String, String), String> {
     let client = reqwest::Client::new();
     let file_bytes = tokio::fs::read(source_path)
@@ -116,12 +136,15 @@ pub async fn upload_to_remote(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "bukti".to_string());
 
-    let part = reqwest::multipart::Part::bytes(file_bytes)
-        .file_name(file_name.clone());
+    let part = reqwest::multipart::Part::bytes(file_bytes).file_name(file_name.clone());
 
-    let form = reqwest::multipart::Form::new()
+    let mut form = reqwest::multipart::Form::new()
         .text("koreksi_id", koreksi_id.to_string())
         .part("file", part);
+
+    if keep_name {
+        form = form.text("keep_name", "true");
+    }
 
     let base_url = storage_api_url.trim_end_matches('/');
     let target_url = format!("{base_url}/api/bukti/upload");
@@ -129,6 +152,9 @@ pub async fn upload_to_remote(
     let mut req = client.post(&target_url).multipart(form);
     if !api_key.trim().is_empty() {
         req = req.header("x-api-key", api_key.trim());
+    }
+    if keep_name {
+        req = req.header("x-keep-name", "true");
     }
 
     let resp = req.send().await.map_err(|e| {

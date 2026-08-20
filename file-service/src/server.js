@@ -71,9 +71,17 @@ const storage = multer.diskStorage({
     cb(null, targetDir);
   },
   filename: (req, file, cb) => {
-    const timestamp = Date.now();
+    const keepName =
+      req.body.keep_name === 'true' ||
+      req.query.keep_name === 'true' ||
+      req.headers['x-keep-name'] === 'true';
     const cleanName = sanitizeFileName(file.originalname);
-    cb(null, `${timestamp}_${cleanName}`);
+    if (keepName) {
+      cb(null, cleanName);
+    } else {
+      const timestamp = Date.now();
+      cb(null, `${timestamp}_${cleanName}`);
+    }
   },
 });
 

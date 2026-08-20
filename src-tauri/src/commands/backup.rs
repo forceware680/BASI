@@ -259,6 +259,19 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
             None
         };
 
+        // Bersihkan data lama di database target yang memiliki No BA atau No TU yang sama
+        // namun berbeda ID UUID agar tidak melanggar unique constraint idx_koreksi_no_tu_unique / idx_koreksi_no_ba_unique
+        let _ = sqlx::query(
+            "DELETE FROM koreksi_bmd
+             WHERE (lower(trim(no_ba)) = lower(trim($1)) OR lower(trim(no_tu)) = lower(trim($2)))
+               AND id <> $3::uuid",
+        )
+        .bind(&k.no_ba)
+        .bind(&k.no_tu)
+        .bind(&k.id)
+        .execute(db)
+        .await;
+
         sqlx::query(
             "INSERT INTO koreksi_bmd (id, no_tu, no_ba, opd_id, tanggal_surat, penjelasan_koreksi, status, file_path, file_name, file_type, uploaded_at)
              VALUES ($1::uuid, $2, $3, $4, $5::date, $6, $7::status_tanda_terima, $8, $9, $10, $11::timestamptz)
@@ -313,18 +326,42 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
     // 5. Jika mode online, upload berkas yang baru diekstrak ke File API Service Cloud
     if cfg.mode == "online" && !cfg.storage_api_url.trim().is_empty() {
         println!("[RESTORE] Mengunggah berkas-berkas hasil pemulihan ke Cloud Server...");
+        let cache_dir = std::env::temp_dir().join("simbasi_cache");
+        let _ = std::fs::create_dir_all(&cache_dir);
+
         for (rel, path) in extracted_files {
             let rel_norm = rel.replace('\\', "/");
             let parts: Vec<&str> = rel_norm.split('/').collect();
             if parts.len() >= 2 {
                 let k_id = parts[0];
-                let _ = crate::storage::upload_to_remote(
+                let orig_fname = parts[1];
+
+                // Simpan juga ke cache lokal
+                let _ = std::fs::copy(&path, cache_dir.join(format!("{}_{}", k_id, orig_fname)));
+
+                match crate::storage::upload_to_remote_exact(
                     &cfg.storage_api_url,
                     &cfg.storage_api_key,
                     k_id,
                     &path.to_string_lossy(),
                 )
-                .await;
+                .await {
+                    Ok((remote_path, fname, ftype)) => {
+                        println!("[RESTORE] Sukses mengunggah berkas: {}", remote_path);
+                        let _ = sqlx::query(
+                            "UPDATE koreksi_bmd SET file_path = $1, file_name = $2, file_type = $3 WHERE id = $4::uuid",
+                        )
+                        .bind(&remote_path)
+                        .bind(&fname)
+                        .bind(&ftype)
+                        .bind(k_id)
+                        .execute(db)
+                        .await;
+                    }
+                    Err(e) => {
+                        eprintln!("[RESTORE ERROR] Gagal mengunggah berkas {}: {}", orig_fname, e);
+                    }
+                }
             }
         }
     }
