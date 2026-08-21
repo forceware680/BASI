@@ -170,7 +170,7 @@ export function EkspedisiPrintSheet({
           {/* 3 Kotak Tanda Tangan & Cap Berdampingan */}
           <div className="mb-4">
             <div className="text-xs font-bold font-sans uppercase mb-2">
-              Lembar Pengesahan & Tanda Terima Sirkulasi:
+              Tanda Terima Ekspedisi:
             </div>
             <div
               style={{

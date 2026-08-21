@@ -25,7 +25,7 @@ export function RekapitulasiPrintSheet({
   onAfterPrint?: () => void;
 }) {
   const printed = useRef(false);
-  const handleClose = onClose || onAfterPrint || (() => {});
+  const handleClose = onClose || onAfterPrint || (() => { });
 
   // Shortcut Escape untuk tutup
   useEffect(() => {
@@ -174,7 +174,7 @@ export function RekapitulasiPrintSheet({
           <div className="mt-8 flex justify-end font-serif">
             <div className="text-center w-72">
               <div>Magelang, {new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</div>
-              <div className="font-bold text-[10pt] mt-1">Kepala Bidang Aset</div>
+              <div className="font-bold text-[10pt] mt-1">Kasubid Penatausahaan Aset</div>
               <div className="text-[9pt]">BPKAD Kota Magelang</div>
               <div className="h-20" />
               <div className="font-bold underline text-[10pt]">( ............................................................ )</div>
