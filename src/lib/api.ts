@@ -189,14 +189,14 @@ export interface UserSession {
   id: string;
   username: string;
   full_name: string;
-  role: "ADMIN" | "USER";
+  role: "ADMIN" | "OPERATOR" | "USER";
 }
 
 export interface UserItem {
   id: string;
   username: string;
   full_name: string;
-  role: "ADMIN" | "USER";
+  role: "ADMIN" | "OPERATOR" | "USER";
   is_active: boolean;
   created_at: string;
   last_login_at?: string;
@@ -206,13 +206,13 @@ export interface CreateUserDto {
   username: string;
   password: string;
   full_name: string;
-  role: "ADMIN" | "USER";
+  role: "ADMIN" | "OPERATOR" | "USER";
 }
 
 export interface UpdateUserDto {
   id: string;
   full_name: string;
-  role: "ADMIN" | "USER";
+  role: "ADMIN" | "OPERATOR" | "USER";
   is_active: boolean;
 }
 

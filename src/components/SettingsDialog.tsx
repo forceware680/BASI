@@ -213,7 +213,7 @@ export function SettingsDialog({ open, onClose, onSaved }: SettingsDialogProps) 
                 <div className="p-3.5 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 text-indigo-900 dark:text-indigo-200 text-xs flex items-start gap-2.5 shadow-sm">
                   <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5 text-indigo-600 dark:text-indigo-400" />
                   <span className="leading-relaxed">
-                    Anda masuk sebagai <strong>User Biasa</strong>. Anda dapat beralih antara <strong>Mode Offline</strong> dan <strong>Mode Online</strong>. Kredensial server database dan storage key diamankan dan hanya dapat dikelola oleh Administrator.
+                    Anda masuk sebagai <strong>Operator</strong>. Anda dapat beralih antara <strong>Mode Offline</strong> dan <strong>Mode Online</strong>. Kredensial server database dan storage key diamankan dan hanya dapat dikelola oleh Administrator.
                   </span>
                 </div>
               )}

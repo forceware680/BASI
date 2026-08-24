@@ -7,7 +7,6 @@ import {
   Terminal,
   Moon,
   Sun,
-  Settings,
   Cloud,
   HardDrive,
   Users,
@@ -108,8 +107,8 @@ function MainApp() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col font-sans text-slate-800 dark:text-slate-100 transition-colors duration-200 antialiased">
       {/* Header Resmi Pemerintah Kota Magelang */}
-      <header className="sticky top-0 z-30 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-4 sm:px-6 py-2.5 sm:py-3 shadow-sm transition-colors">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
+      <header className="sticky top-0 z-30 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-4 sm:px-8 py-2.5 sm:py-3 shadow-sm transition-colors">
+        <div className="mx-auto flex max-w-[1700px] w-full items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
             <img
               src={logoKotaMagelang}
@@ -154,17 +153,6 @@ function MainApp() {
               <span className="hidden lg:inline">Cadangan Data</span>
             </button>
 
-            {/* Tombol Pengaturan Koneksi Database */}
-            <button
-              type="button"
-              onClick={() => setSettingsOpen(true)}
-              title="Pengaturan Mode Database & Koneksi"
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 sm:px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700/80 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors cursor-pointer"
-            >
-              <Settings className="h-4 w-4 text-slate-600 dark:text-slate-300 shrink-0" />
-              <span className="hidden lg:inline">Koneksi</span>
-            </button>
-
             {/* Tombol Toggle Tema Dark / Light Mode */}
             <button
               type="button"
@@ -194,23 +182,23 @@ function MainApp() {
               <span className="hidden xl:inline">CMD</span>
             </button>
 
-            {/* Status Mode Database (Offline / Online) */}
+            {/* Status Mode Database (Offline / Online) & Tombol Pengaturan */}
             <button
               type="button"
               onClick={() => setSettingsOpen(true)}
               title={
                 dbInfo
-                  ? `Mode: ${dbInfo.mode}\nHost: ${dbInfo.host}:${dbInfo.port}\nDatabase: ${dbInfo.database}\n(Klik untuk mengubah pengaturan)`
+                  ? `Mode: ${dbInfo.mode}\nHost: ${dbInfo.host}:${dbInfo.port}\nDatabase: ${dbInfo.database}\n(Klik untuk mengubah pengaturan mode koneksi & database)`
                   : "Memeriksa status koneksi database..."
               }
-              className="hidden md:flex items-center gap-1.5 sm:gap-2 rounded-full border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900 px-2.5 sm:px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-white dark:hover:bg-slate-800 cursor-pointer select-none transition-all shrink-0"
+              className="flex items-center gap-1.5 sm:gap-2 rounded-full border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900 px-2.5 sm:px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-white dark:hover:bg-slate-800 cursor-pointer select-none transition-all shrink-0"
             >
               {dbInfo?.mode.includes("Online") ? (
                 <Cloud className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               ) : (
                 <HardDrive className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
               )}
-              <span className="font-semibold text-slate-700 dark:text-slate-200 hidden xl:inline">
+              <span className="font-semibold text-slate-700 dark:text-slate-200 hidden sm:inline">
                 {dbInfo?.mode || "Database"}
               </span>
               <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)] shrink-0" />
@@ -234,7 +222,7 @@ function MainApp() {
                     {isAdmin ? (
                       <span className="text-indigo-600 dark:text-indigo-400 font-semibold">Admin</span>
                     ) : (
-                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">User Biasa</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Operator</span>
                     )}
                   </div>
                 </div>
@@ -261,7 +249,7 @@ function MainApp() {
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">
                           <User className="h-2.5 w-2.5" />
-                          User Biasa
+                          Operator
                         </span>
                       )}
                     </div>
@@ -320,7 +308,7 @@ function MainApp() {
       </header>
 
       {/* Konten Utama */}
-      <main className="flex-1 px-6 py-6 mx-auto w-full max-w-7xl">
+      <main className="flex-1 px-4 sm:px-8 py-6 mx-auto w-full max-w-[1700px]">
         <KoreksiListPage
           key={refreshKey}
           onRowsLoaded={setAllRows}

@@ -47,7 +47,12 @@ pub async fn list_users(db: &PgPool) -> Result<Vec<UserItem>, String> {
 pub async fn create_user(db: &PgPool, payload: CreateUserDto) -> Result<UserItem, String> {
     let username = payload.username.trim().to_lowercase();
     let full_name = payload.full_name.trim().to_string();
-    let role = payload.role.trim().to_uppercase();
+    let role_raw = payload.role.trim().to_uppercase();
+    let role = if role_raw == "USER" || role_raw == "OPERATOR" {
+        "OPERATOR".to_string()
+    } else {
+        role_raw
+    };
 
     if username.is_empty() {
         return Err("Nama pengguna (username) wajib diisi.".to_string());
@@ -58,8 +63,8 @@ pub async fn create_user(db: &PgPool, payload: CreateUserDto) -> Result<UserItem
     if payload.password.trim().len() < 5 {
         return Err("Kata sandi minimal harus 5 karakter.".to_string());
     }
-    if role != "ADMIN" && role != "USER" {
-        return Err("Peran pengguna harus 'ADMIN' atau 'USER'.".to_string());
+    if role != "ADMIN" && role != "OPERATOR" {
+        return Err("Peran pengguna harus 'ADMIN' atau 'OPERATOR'.".to_string());
     }
 
     // Cek duplikasi username
@@ -108,13 +113,18 @@ pub async fn create_user(db: &PgPool, payload: CreateUserDto) -> Result<UserItem
 /// Perbarui nama lengkap, role, dan status aktif akun pengguna.
 pub async fn update_user(db: &PgPool, payload: UpdateUserDto) -> Result<UserItem, String> {
     let full_name = payload.full_name.trim().to_string();
-    let role = payload.role.trim().to_uppercase();
+    let role_raw = payload.role.trim().to_uppercase();
+    let role = if role_raw == "USER" || role_raw == "OPERATOR" {
+        "OPERATOR".to_string()
+    } else {
+        role_raw
+    };
 
     if full_name.is_empty() {
         return Err("Nama lengkap wajib diisi.".to_string());
     }
-    if role != "ADMIN" && role != "USER" {
-        return Err("Peran pengguna harus 'ADMIN' atau 'USER'.".to_string());
+    if role != "ADMIN" && role != "OPERATOR" {
+        return Err("Peran pengguna harus 'ADMIN' atau 'OPERATOR'.".to_string());
     }
 
     // Mencegah penonaktifan atau penurunan hak akses seluruh admin (harus menyisakan minimal 1 Admin aktif)

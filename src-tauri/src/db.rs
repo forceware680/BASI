@@ -144,7 +144,7 @@ async fn ensure_users_and_admin(pool: &DbPool) {
             username      VARCHAR(50) NOT NULL UNIQUE,
             password_hash VARCHAR(255) NOT NULL,
             full_name     VARCHAR(100) NOT NULL,
-            role          VARCHAR(20) NOT NULL CHECK (role IN ('ADMIN', 'USER')),
+            role          VARCHAR(20) NOT NULL DEFAULT 'OPERATOR',
             is_active     BOOLEAN NOT NULL DEFAULT TRUE,
             created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             last_login_at TIMESTAMPTZ
@@ -155,6 +155,13 @@ async fn ensure_users_and_admin(pool: &DbPool) {
 
     let _ = sqlx::query(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower ON users (lower(trim(username)));",
+    )
+    .execute(pool)
+    .await;
+
+    // Pastikan relasi created_by pada tabel koreksi_bmd selalu ada
+    let _ = sqlx::query(
+        "ALTER TABLE koreksi_bmd ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;",
     )
     .execute(pool)
     .await;

@@ -10,6 +10,7 @@ import { todayIso } from "../lib/types";
 import type { KoreksiRow } from "../lib/types";
 import { OpdCombobox } from "./OpdCombobox";
 import { Sparkles, Info } from "lucide-react";
+import { useAuth } from "../lib/auth";
 
 type FormMode = "create" | "edit";
 
@@ -71,6 +72,7 @@ export function KoreksiFormDialog({
   onSaved: (row: KoreksiRow) => void;
   onPrint: (row: KoreksiRow) => void;
 }) {
+  const { user } = useAuth();
   const [fields, setFields] = useState<Fields>(getEmptyFields);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -186,6 +188,7 @@ export function KoreksiFormDialog({
         opd_id: fields.opd_id!,
         tanggal_surat: fields.tanggal_surat,
         penjelasan_koreksi: fields.penjelasan_koreksi.trim(),
+        created_by: user?.id || null,
       };
       let row: KoreksiRow;
       if (open === "edit" && initial) {

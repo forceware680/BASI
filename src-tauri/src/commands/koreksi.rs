@@ -3,21 +3,24 @@
 use crate::models::{CreateKoreksiDto, KoreksiRow, StatusTandaTerima};
 use sqlx::PgPool;
 
-/// Baris koreksi + join nama OPD (13 kolom, urut created_at DESC).
+/// Baris koreksi + join nama OPD + join users pembuat (16 kolom, urut created_at DESC).
 type Row = (
-    String,
-    String,
-    String,
-    i32,
-    Option<String>,
-    String,
-    String,
-    String,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    String,
-    Option<String>,
+    String,         // 0: id
+    String,         // 1: no_tu
+    String,         // 2: no_ba
+    i32,            // 3: opd_id
+    Option<String>, // 4: nama_opd
+    String,         // 5: tanggal_surat
+    String,         // 6: penjelasan_koreksi
+    String,         // 7: status
+    Option<String>, // 8: file_name
+    Option<String>, // 9: file_type
+    Option<String>, // 10: uploaded_at
+    String,         // 11: created_at
+    Option<String>, // 12: file_path
+    Option<String>, // 13: created_by
+    Option<String>, // 14: created_by_name
+    Option<String>, // 15: created_by_role
 );
 
 fn to_row(r: Row) -> KoreksiRow {
@@ -35,11 +38,14 @@ fn to_row(r: Row) -> KoreksiRow {
         uploaded_at: r.10,
         created_at: r.11,
         file_path: r.12,
+        created_by: r.13,
+        created_by_name: r.14,
+        created_by_role: r.15,
     }
 }
 
-// SQL tunggal-baris
-const ROWS_SQL: &str = "SELECT k.id::text, k.no_tu, k.no_ba, k.opd_id, o.nama_opd, k.tanggal_surat::text, k.penjelasan_koreksi, k.status::text, k.file_name, k.file_type, k.uploaded_at::text, k.created_at::text, k.file_path FROM koreksi_bmd k LEFT JOIN master_opd o ON o.id = k.opd_id";
+// SQL tunggal-baris dengan LEFT JOIN master_opd dan users
+const ROWS_SQL: &str = "SELECT k.id::text, k.no_tu, k.no_ba, k.opd_id, o.nama_opd, k.tanggal_surat::text, k.penjelasan_koreksi, k.status::text, k.file_name, k.file_type, k.uploaded_at::text, k.created_at::text, k.file_path, k.created_by::text, u.full_name, u.role FROM koreksi_bmd k LEFT JOIN master_opd o ON o.id = k.opd_id LEFT JOIN users u ON u.id = k.created_by";
 
 fn db_err(e: sqlx::Error) -> String {
     format!("Gagal mengakses data. ({})", e)
@@ -53,7 +59,7 @@ pub async fn list_koreksi(
 ) -> Result<Vec<KoreksiRow>, String> {
     let s = search.unwrap_or_default();
     let st = status.unwrap_or_default();
-    let q = format!("{ROWS_SQL} WHERE ( $1 = '' OR lower(k.no_ba) LIKE lower($3) OR lower(k.no_tu) LIKE lower($3) OR lower(o.nama_opd) LIKE lower($3) ) AND ( $2 = '' OR k.status::text = $2 ) ORDER BY k.created_at DESC");
+    let q = format!("{ROWS_SQL} WHERE ( $1 = '' OR lower(k.no_ba) LIKE lower($3) OR lower(k.no_tu) LIKE lower($3) OR lower(o.nama_opd) LIKE lower($3) OR lower(coalesce(u.full_name, '')) LIKE lower($3) ) AND ( $2 = '' OR k.status::text = $2 ) ORDER BY k.created_at DESC");
     let rows: Vec<Row> = sqlx::query_as(&q)
         .bind(&s)
         .bind(&st)
@@ -107,14 +113,18 @@ pub async fn create_koreksi(
     if n == 0 {
         return Err("OPD tidak ditemukan.".to_string());
     }
+
+    let created_by_val = payload.created_by.as_deref().filter(|s| !s.trim().is_empty());
+
     let id: String = sqlx::query_scalar(
-        "INSERT INTO koreksi_bmd (no_tu, no_ba, opd_id, tanggal_surat, penjelasan_koreksi) VALUES ($1, $2, $3, $4::date, $5) RETURNING id::text",
+        "INSERT INTO koreksi_bmd (no_tu, no_ba, opd_id, tanggal_surat, penjelasan_koreksi, created_by) VALUES ($1, $2, $3, $4::date, $5, $6::uuid) RETURNING id::text",
     )
     .bind(payload.no_tu.trim())
     .bind(payload.no_ba.trim())
     .bind(payload.opd_id)
     .bind(&payload.tanggal_surat)
     .bind(&payload.penjelasan_koreksi)
+    .bind(created_by_val)
     .fetch_one(db)
     .await
     .map_err(|e| {

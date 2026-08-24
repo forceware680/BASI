@@ -1,4 +1,4 @@
-// commands/backup.rs — Backup & Restore Penuh Data + File Bukti (.zip).
+// commands/backup.rs — Backup & Restore Penuh Data + Akun Pengguna + File Bukti (.zip).
 // Mendukung pemisahan bersih antara Mode Offline (Lokal) dan Mode Online (Cloud Server).
 
 use crate::models::{KoreksiRow, Opd};
@@ -9,29 +9,78 @@ use std::path::Path;
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct BackupUser {
+    pub id: String,
+    pub username: String,
+    pub password_hash: String,
+    pub full_name: String,
+    pub role: String,
+    pub is_active: bool,
+    pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_login_at: Option<String>,
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 struct BackupPayload {
     version: String,
     created_at: String,
+    #[serde(default)]
+    users_list: Vec<BackupUser>,
     opd_list: Vec<Opd>,
     koreksi_list: Vec<KoreksiRow>,
 }
+
+type DbUserBackupRow = (
+    String,         // 0: id
+    String,         // 1: username
+    String,         // 2: password_hash
+    String,         // 3: full_name
+    String,         // 4: role
+    bool,           // 5: is_active
+    String,         // 6: created_at
+    Option<String>, // 7: last_login_at
+);
 
 fn db_err(e: sqlx::Error) -> String {
     format!("Gagal mengakses database. ({})", e)
 }
 
-/// Buat backup .zip berisi database JSON + seluruh file scan bukti.
+/// Buat backup .zip berisi database JSON (users, opd, koreksi) + seluruh file scan bukti.
 pub async fn create_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option<String>, String> {
-    // 1. Ambil data master_opd dari database yang aktif
+    // 1. Ambil data users dari database yang aktif
+    let user_rows: Vec<DbUserBackupRow> = sqlx::query_as(
+        "SELECT id::text, username, password_hash, full_name, role, is_active, created_at::text, last_login_at::text FROM users ORDER BY created_at ASC",
+    )
+    .fetch_all(db)
+    .await
+    .unwrap_or_default();
+
+    let users_list: Vec<BackupUser> = user_rows
+        .into_iter()
+        .map(|r| BackupUser {
+            id: r.0,
+            username: r.1,
+            password_hash: r.2,
+            full_name: r.3,
+            role: r.4,
+            is_active: r.5,
+            created_at: r.6,
+            last_login_at: r.7,
+        })
+        .collect();
+
+    // 2. Ambil data master_opd dari database yang aktif
     let opd_rows = crate::commands::opd::list_opd(db, None).await?;
 
-    // 2. Ambil data koreksi_bmd dari database yang aktif
+    // 3. Ambil data koreksi_bmd dari database yang aktif
     let koreksi_list = crate::commands::koreksi::list_koreksi(db, None, None).await?;
 
     let backup_data = BackupPayload {
-        version: "2.0".to_string(),
+        version: "2.1".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
+        users_list,
         opd_list: opd_rows,
         koreksi_list,
     };
@@ -39,7 +88,7 @@ pub async fn create_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option<
     let json_bytes = serde_json::to_vec_pretty(&backup_data)
         .map_err(|e| format!("Gagal memformat data backup. ({e})"))?;
 
-    // 3. Buka dialog penyimpanan file (.zip) di komputer pengguna
+    // 4. Buka dialog penyimpanan file (.zip) di komputer pengguna
     let default_name = format!(
         "backup_sim_ba_koreksi_{}.zip",
         chrono::Local::now().format("%Y%m%d_%H%M%S")
@@ -57,7 +106,7 @@ pub async fn create_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option<
         None => return Ok(None), // User batal
     };
 
-    // 4. Tulis file ZIP
+    // 5. Tulis file ZIP
     let file = File::create(&target_path)
         .map_err(|e| format!("Gagal membuat file backup di lokasi tujuan. ({e})"))?;
     let mut zip = ZipWriter::new(file);
@@ -73,7 +122,7 @@ pub async fn create_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option<
 
     let cfg = crate::config::load_config(&app);
 
-    // 5. Tangani berkas bukti sesuai MODE AKTIF
+    // 6. Tangani berkas bukti sesuai MODE AKTIF
     if cfg.mode == "offline" {
         // MODE OFFLINE: Ambil file bukti fisik dari folder %APPDATA%/bukti/ komputer lokal
         println!("[BACKUP] Mode Offline: Mengambil berkas bukti dari folder lokal...");
@@ -209,7 +258,44 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
     let backup_data: BackupPayload = serde_json::from_str(&json_content)
         .map_err(|e| format!("Format data JSON tidak cocok. ({e})"))?;
 
-    // 2. Restore Master OPD ke database aktif
+    // 2. Restore Akun Pengguna (Users) ke database aktif
+    if !backup_data.users_list.is_empty() {
+        println!("[RESTORE] Memulihkan {} akun pengguna...", backup_data.users_list.len());
+        for u in &backup_data.users_list {
+            // Bersihkan potensi konflik username dengan UUID berbeda
+            let _ = sqlx::query(
+                "DELETE FROM users WHERE lower(trim(username)) = lower(trim($1)) AND id <> $2::uuid",
+            )
+            .bind(&u.username)
+            .bind(&u.id)
+            .execute(db)
+            .await;
+
+            let _ = sqlx::query(
+                "INSERT INTO users (id, username, password_hash, full_name, role, is_active, created_at, last_login_at)
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7::timestamptz, $8::timestamptz)
+                 ON CONFLICT (id) DO UPDATE SET
+                    username = EXCLUDED.username,
+                    password_hash = EXCLUDED.password_hash,
+                    full_name = EXCLUDED.full_name,
+                    role = EXCLUDED.role,
+                    is_active = EXCLUDED.is_active,
+                    last_login_at = EXCLUDED.last_login_at",
+            )
+            .bind(&u.id)
+            .bind(&u.username)
+            .bind(&u.password_hash)
+            .bind(&u.full_name)
+            .bind(&u.role)
+            .bind(u.is_active)
+            .bind(&u.created_at)
+            .bind(&u.last_login_at)
+            .execute(db)
+            .await;
+        }
+    }
+
+    // 3. Restore Master OPD ke database aktif
     for opd in &backup_data.opd_list {
         sqlx::query(
             "INSERT INTO master_opd (id, nama_opd, singkatan, is_active)
@@ -230,7 +316,7 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
         .execute(db)
         .await;
 
-    // 3. Restore Koreksi BMD ke database aktif
+    // 4. Restore Koreksi BMD ke database aktif
     let app_dir = crate::storage::app_root(&app)
         .map_err(|e| format!("Gagal mengakses folder data aplikasi. ({e})"))?;
     let bukti_root = app_dir.join("bukti");
@@ -272,9 +358,11 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
         .execute(db)
         .await;
 
+        let created_by_val = k.created_by.as_deref().filter(|s| !s.trim().is_empty());
+
         sqlx::query(
-            "INSERT INTO koreksi_bmd (id, no_tu, no_ba, opd_id, tanggal_surat, penjelasan_koreksi, status, file_path, file_name, file_type, uploaded_at)
-             VALUES ($1::uuid, $2, $3, $4, $5::date, $6, $7::status_tanda_terima, $8, $9, $10, $11::timestamptz)
+            "INSERT INTO koreksi_bmd (id, no_tu, no_ba, opd_id, tanggal_surat, penjelasan_koreksi, status, file_path, file_name, file_type, uploaded_at, created_by)
+             VALUES ($1::uuid, $2, $3, $4, $5::date, $6, $7::status_tanda_terima, $8, $9, $10, $11::timestamptz, $12::uuid)
              ON CONFLICT (id) DO UPDATE SET
                 no_tu = EXCLUDED.no_tu,
                 no_ba = EXCLUDED.no_ba,
@@ -285,7 +373,8 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
                 file_path = EXCLUDED.file_path,
                 file_name = EXCLUDED.file_name,
                 file_type = EXCLUDED.file_type,
-                uploaded_at = EXCLUDED.uploaded_at",
+                uploaded_at = EXCLUDED.uploaded_at,
+                created_by = EXCLUDED.created_by",
         )
         .bind(&k.id)
         .bind(&k.no_tu)
@@ -298,12 +387,13 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
         .bind(&k.file_name)
         .bind(&k.file_type)
         .bind(&k.uploaded_at)
+        .bind(created_by_val)
         .execute(db)
         .await
         .map_err(db_err)?;
     }
 
-    // 4. Ekstrak seluruh file bukti dari zip ke {app_data_dir}/bukti/
+    // 5. Ekstrak seluruh file bukti dari zip ke {app_data_dir}/bukti/
     let mut extracted_files: Vec<(String, std::path::PathBuf)> = Vec::new();
     for i in 0..archive.len() {
         if let Ok(mut zip_file) = archive.by_index(i) {
@@ -323,7 +413,7 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
     }
     drop(archive);
 
-    // 5. Jika mode online, upload berkas yang baru diekstrak ke File API Service Cloud
+    // 6. Jika mode online, upload berkas yang baru diekstrak ke File API Service Cloud
     if cfg.mode == "online" && !cfg.storage_api_url.trim().is_empty() {
         println!("[RESTORE] Mengunggah berkas-berkas hasil pemulihan ke Cloud Server...");
         let cache_dir = std::env::temp_dir().join("simbasi_cache");
@@ -366,9 +456,20 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
         }
     }
 
-    Ok(Some(format!(
-        "Berhasil memulihkan {} master OPD dan {} berkas BA Koreksi.",
-        backup_data.opd_list.len(),
-        backup_data.koreksi_list.len()
-    )))
+    let user_msg = if !backup_data.users_list.is_empty() {
+        format!(
+            "Berhasil memulihkan {} akun pengguna, {} master OPD, dan {} berkas BA Koreksi.",
+            backup_data.users_list.len(),
+            backup_data.opd_list.len(),
+            backup_data.koreksi_list.len()
+        )
+    } else {
+        format!(
+            "Berhasil memulihkan {} master OPD dan {} berkas BA Koreksi.",
+            backup_data.opd_list.len(),
+            backup_data.koreksi_list.len()
+        )
+    };
+
+    Ok(Some(user_msg))
 }

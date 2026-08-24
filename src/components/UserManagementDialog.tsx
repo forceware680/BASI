@@ -209,7 +209,7 @@ export function UserManagementDialog({ open, onClose }: UserManagementDialogProp
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Kelola hak akses Administrator dan User Biasa untuk SIMBASI BMD
+                Kelola hak akses Administrator dan Operator untuk SIMBASI BMD
               </p>
             </div>
           </div>
@@ -303,7 +303,7 @@ export function UserManagementDialog({ open, onClose }: UserManagementDialogProp
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 font-bold text-[10px]">
                             <User className="h-3 w-3" />
-                            User Biasa
+                            Operator
                           </span>
                         )}
                       </td>
@@ -467,7 +467,7 @@ export function UserManagementDialog({ open, onClose }: UserManagementDialogProp
                   >
                     <User className="h-4 w-4 text-emerald-600 shrink-0" />
                     <div>
-                      <div>User Biasa</div>
+                      <div>Operator</div>
                       <div className="text-[10px] font-normal opacity-80">Operasional BMD</div>
                     </div>
                   </button>
