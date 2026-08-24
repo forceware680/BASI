@@ -9,6 +9,7 @@ yarn-error.log*
 # Rust & Tauri Build Output
 src-tauri/target/
 target/
+release-output/
 **/*.rs.bk
 
 # Large Binary Bundles (PostgreSQL Portable)
@@ -21,6 +22,8 @@ src-tauri/resources/pgsql/
 .env.local
 .env.*.local
 !.env.example
+*.key
+!*.key.pub
 
 # Logs & Temporary Files
 *.log
