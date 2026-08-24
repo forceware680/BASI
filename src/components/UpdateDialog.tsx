@@ -5,6 +5,7 @@ import { useEffect, useState, useRef } from "react";
 import { check } from "@tauri-apps/plugin-updater";
 import type { Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
+import { getVersion } from "@tauri-apps/api/app";
 import {
   Sparkles,
   RefreshCw,
@@ -37,7 +38,7 @@ export function UpdateDialog({
   const [updateObj, setUpdateObj] = useState<Update | null>(null);
   const [targetVersion, setTargetVersion] = useState<string>("");
   const [releaseNotes, setReleaseNotes] = useState<string>("");
-  const [currentVersion, setCurrentVersion] = useState<string>("v1.1.1");
+  const [currentVersion, setCurrentVersion] = useState<string>("");
   const [downloadProgress, setDownloadProgress] = useState<number>(0);
   const [downloadedBytes, setDownloadedBytes] = useState<number>(0);
   const [totalBytes, setTotalBytes] = useState<number>(0);
@@ -45,34 +46,45 @@ export function UpdateDialog({
 
   const mountedRef = useRef(true);
 
+  // Ambil versi aplikasi yang sedang berjalan secara dinamis
+  useEffect(() => {
+    getVersion()
+      .then((ver) => {
+        if (ver && mountedRef.current) {
+          setCurrentVersion(ver.startsWith("v") ? ver : `v${ver}`);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const checkForUpdates = async () => {
     setState("checking");
     setErrorMessage(null);
     setDownloadProgress(0);
 
     try {
+      const runningVer = await getVersion().catch(() => "");
+      if (runningVer && mountedRef.current) {
+        setCurrentVersion(runningVer.startsWith("v") ? runningVer : `v${runningVer}`);
+      }
+
       const update = await check();
       if (!mountedRef.current) return;
 
       if (update && update.available) {
         setUpdateObj(update);
         setTargetVersion(update.version.startsWith("v") ? update.version : `v${update.version}`);
-        setCurrentVersion(
-          update.currentVersion.startsWith("v")
-            ? update.currentVersion
-            : `v${update.currentVersion}`
-        );
-        setReleaseNotes(update.body || "Pembaruan stabilitas dan peningkatan performa sistem.");
-        setState("available");
-      } else {
-        setState("up_to_date");
-        if (update?.currentVersion) {
+        if (update.currentVersion) {
           setCurrentVersion(
             update.currentVersion.startsWith("v")
               ? update.currentVersion
               : `v${update.currentVersion}`
           );
         }
+        setReleaseNotes(update.body || "Pembaruan stabilitas dan peningkatan performa sistem.");
+        setState("available");
+      } else {
+        setState("up_to_date");
       }
     } catch (err) {
       if (!mountedRef.current) return;

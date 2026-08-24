@@ -496,11 +496,21 @@ pub fn run() {
             };
             app.manage(PortableDbState(Mutex::new(portable_dir)));
 
-            // Koneksi DB + auto-create database & migrasi idempoten saat startup
-            let pool = tauri::async_runtime::block_on(crate::db::connect_with_url(&config.database_url))
-                .expect("Tidak dapat terhubung ke database. Periksa layanan PostgreSQL atau konfigurasi database.");
-            println!("[APP] Inisialisasi koneksi database selesai. Mode: {}", config.mode);
-            
+            // Koneksi DB non-blocking (Lazy Pool) di dalam Tokio runtime context
+            let pool = tauri::async_runtime::block_on(async {
+                crate::db::create_pool(&config.database_url)
+            })
+            .expect("Format URL database tidak valid. Periksa konfigurasi database.");
+            println!("[APP] Inisialisasi pool database selesai. Mode: {}", config.mode);
+
+            let pool_clone = pool.clone();
+            let url_clone = config.database_url.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = crate::db::run_migrations_and_seed(&pool_clone, &url_clone).await {
+                    eprintln!("[DB ASYNC WARN] Inisialisasi skema background: {e}");
+                }
+            });
+
             app.manage(crate::db::DbState(tokio::sync::RwLock::new(pool)));
             Ok(())
         })

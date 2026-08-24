@@ -1,7 +1,7 @@
-# make-release.ps1 — Script otomatis Build + Sign + Generate latest.json untuk GitHub Releases
+# make-release.ps1 — Script otomatis Build + Sign + Generate latest.json untuk GitHub Releases (Tauri v2)
 # Penggunaan:
 #   .\make-release.ps1
-#   atau: .\make-release.ps1 1.2.0
+#   atau: .\make-release.ps1 1.0.1
 
 param (
     [Parameter(Position=0, Mandatory=$false)]
@@ -35,11 +35,14 @@ if (-not (Test-Path $keyPath)) {
     exit 1
 }
 
+$keyContent = (Get-Content $keyPath -Raw).Trim()
+$env:TAURI_SIGNING_PRIVATE_KEY = $keyContent
 $env:TAURI_SIGNING_PRIVATE_KEY_PATH = $keyPath
 $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
+$env:CI = "true"
 
 Write-Host "Mengompilasi aplikasi dan menandatangani binary rilis..." -ForegroundColor Cyan
-npm run tauri build
+npx @tauri-apps/cli build --ci
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[ERROR] Kompilasi tauri build gagal." -ForegroundColor Red
     exit 1
@@ -49,36 +52,39 @@ if ($LASTEXITCODE -ne 0) {
 $outDir = Join-Path $RootDir "release-output"
 if (-not (Test-Path $outDir)) {
     New-Item -ItemType Directory -Path $outDir | Out-Null
+} else {
+    # Bersihkan file rilis lama di folder output
+    Remove-Item (Join-Path $outDir "*") -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 $bundleNsis = Join-Path $RootDir "src-tauri\target\release\bundle\nsis"
-$setupExe = Get-ChildItem -Path $bundleNsis -Filter "*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-$setupZip = Get-ChildItem -Path $bundleNsis -Filter "*.nsis.zip" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-$setupSig = Get-ChildItem -Path $bundleNsis -Filter "*.nsis.zip.sig" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 
-if ($setupExe) {
-    Copy-Item $setupExe.FullName -Destination $outDir -Force
-    Write-Host "  [OK] Tersalin: $($setupExe.Name)" -ForegroundColor Green
+# Ambil berkas .exe dan .sig yang sesuai dengan versi yang baru saja dibuild
+$setupExe = Get-ChildItem -Path $bundleNsis -Filter "*$CurrentVer*.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$setupSig = Get-ChildItem -Path $bundleNsis -Filter "*$CurrentVer*.exe.sig" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+
+if (-not $setupExe) {
+    Write-Host "[ERROR] Installer .exe untuk versi v$CurrentVer tidak ditemukan di $bundleNsis!" -ForegroundColor Red
+    exit 1
 }
-if ($setupZip) {
-    Copy-Item $setupZip.FullName -Destination $outDir -Force
-    Write-Host "  [OK] Tersalin: $($setupZip.Name)" -ForegroundColor Green
-}
+
+Copy-Item $setupExe.FullName -Destination $outDir -Force
+Write-Host "  [OK] Installer & Updater: $($setupExe.Name)" -ForegroundColor Green
+
 if ($setupSig) {
     Copy-Item $setupSig.FullName -Destination $outDir -Force
-    Write-Host "  [OK] Tersalin: $($setupSig.Name)" -ForegroundColor Green
+    Write-Host "  [OK] Signature File:      $($setupSig.Name)" -ForegroundColor Green
+} else {
+    Write-Host "[ERROR] File signature .sig tidak ditemukan! Pastikan signing key terpasang." -ForegroundColor Red
+    exit 1
 }
 
-# 4. Generate file latest.json
-$sigContent = ""
-if ($setupSig -and (Test-Path $setupSig.FullName)) {
-    $sigContent = (Get-Content $setupSig.FullName -Raw).Trim()
-}
+# 4. Generate file manifest latest.json
+$sigContent = (Get-Content $setupSig.FullName -Raw).Trim()
 
-$zipFileName = if ($setupZip) { $setupZip.Name } else { "SIMBASI_BMD_${CurrentVer}_x64-setup.nsis.zip" }
-
-# Encode URL
-$downloadUrl = "https://github.com/forceware680/BASI/releases/download/v${CurrentVer}/$zipFileName"
+# GitHub otomatis mengganti spasi pada nama file menjadi titik (.) saat diupload ke release assets
+$canonicalFileName = $setupExe.Name.Replace(" ", ".")
+$downloadUrl = "https://github.com/forceware680/BASI/releases/download/v${CurrentVer}/$canonicalFileName"
 
 $latestJson = @{
     version = $CurrentVer
@@ -97,14 +103,17 @@ $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 $jsonString = $latestJson | ConvertTo-Json -Depth 5
 [System.IO.File]::WriteAllText($jsonPath, $jsonString, $utf8NoBom)
 
-Write-Host "  [OK] Dibuat: latest.json" -ForegroundColor Green
+Write-Host "  [OK] Manifest Update:     latest.json" -ForegroundColor Green
 
 Write-Host "`n============================================================" -ForegroundColor Green
 Write-Host "  SELESAI! Seluruh file rilis siap di folder: release-output/" -ForegroundColor Green
 Write-Host "============================================================" -ForegroundColor Green
 Write-Host "Langkah Publikasi ke GitHub Releases:" -ForegroundColor Yellow
-Write-Host "1. Buka: https://github.com/forceware680/BASI/releases/new" -ForegroundColor White
+Write-Host "1. Buka: https://github.com/forceware680/BASI/releases/new (atau edit release v$CurrentVer)" -ForegroundColor White
 Write-Host "2. Masukkan Tag: v${CurrentVer} dan Title: SIMBASI BMD v${CurrentVer}" -ForegroundColor White
-Write-Host "3. Tarik (Drag & drop) SEMUA file di folder 'release-output/' ke release assets" -ForegroundColor White
+Write-Host "3. Tarik (Drag & drop) 3 file dari folder 'release-output/' ke release assets:" -ForegroundColor White
+Write-Host "   - $($setupExe.Name)" -ForegroundColor Cyan
+Write-Host "   - $($setupSig.Name)" -ForegroundColor Cyan
+Write-Host "   - latest.json" -ForegroundColor Cyan
 Write-Host "4. Klik 'Publish release'. Selesai!" -ForegroundColor White
 Write-Host "============================================================`n" -ForegroundColor Green

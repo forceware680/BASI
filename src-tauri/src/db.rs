@@ -83,44 +83,47 @@ async fn ensure_database_exists(db_url: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Buat pool dari URL spesifik, jalankan migrasi idempoten.
-pub async fn connect_with_url(url: &str) -> Result<DbPool, String> {
-    // Pastikan database ada sebelum membuat pool
-    ensure_database_exists(url).await?;
+/// Buat pool koneksi PostgreSQL secara non-blocking (Lazy Pool).
+pub fn create_pool(url: &str) -> Result<DbPool, String> {
+    sqlx::postgres::PgPoolOptions::new()
+        .max_connections(10)
+        .min_connections(1)
+        .acquire_timeout(std::time::Duration::from_secs(12))
+        .idle_timeout(std::time::Duration::from_secs(300))
+        .connect_lazy(url)
+        .map_err(|e| format!("URL database tidak valid: {e}"))
+}
 
-    println!("[DB] Menginisialisasi Connection Pool ke PostgreSQL...");
-    let pool = sqlx::PgPool::connect(url)
-        .await
-        .map_err(|e| {
-            eprintln!("[DB ERROR] Gagal inisialisasi pool: {e}");
-            format!("Tidak dapat terhubung ke database. ({e})")
-        })?;
+/// Menjalankan pengecekan database, migrasi skema, dan seeder di background.
+pub async fn run_migrations_and_seed(pool: &DbPool, url: &str) -> Result<(), String> {
+    // 1. Pastikan database target ada
+    if let Err(e) = ensure_database_exists(url).await {
+        eprintln!("[DB WARN] ensure_database_exists: {e}");
+    }
 
-    // sqlx::migrate! embeds the SQL at compile time and expands to a Migrator struct
     println!("[DB] Menjalankan migrasi skema SQLx idempoten...");
-    if let Err(e) = sqlx::migrate!("./migrations").run(&pool).await {
+    if let Err(e) = sqlx::migrate!("./migrations").run(pool).await {
         eprintln!("[DB WARN] Peringatan migrasi SQLx: {e}");
         
         // Cek apakah tabel utama sudah ada di database
         let table_exists: bool = sqlx::query_scalar(
             "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'koreksi_bmd')"
         )
-        .fetch_one(&pool)
+        .fetch_one(pool)
         .await
         .unwrap_or(false);
 
         if table_exists {
             println!("[DB] Tabel utama 'koreksi_bmd' sudah terisi/eksis. Melewati validasi checksum migrasi lama.");
-            // Pastikan index unik esensial tetap ada secara idempoten
             let _ = sqlx::query(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_koreksi_no_ba_unique ON koreksi_bmd (lower(trim(no_ba)))"
             )
-            .execute(&pool)
+            .execute(pool)
             .await;
             let _ = sqlx::query(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_koreksi_no_tu_unique ON koreksi_bmd (lower(trim(no_tu)))"
             )
-            .execute(&pool)
+            .execute(pool)
             .await;
         } else {
             eprintln!("[DB ERROR] Gagal inisialisasi tabel pada database baru: {e}");
@@ -130,9 +133,15 @@ pub async fn connect_with_url(url: &str) -> Result<DbPool, String> {
         println!("[DB] Migrasi skema selesai. Semua tabel & seeder OPD siap.");
     }
 
-    // Pastikan tabel users dan akun default admin selalu siap secara idempoten
-    ensure_users_and_admin(&pool).await;
+    // 2. Pastikan tabel users dan akun default admin selalu siap secara idempoten
+    ensure_users_and_admin(pool).await;
+    Ok(())
+}
 
+/// Buat pool dari URL spesifik, jalankan migrasi idempoten.
+pub async fn connect_with_url(url: &str) -> Result<DbPool, String> {
+    let pool = create_pool(url)?;
+    run_migrations_and_seed(&pool, url).await?;
     Ok(pool)
 }
 
