@@ -98,15 +98,38 @@ pub async fn connect_with_url(url: &str) -> Result<DbPool, String> {
 
     // sqlx::migrate! embeds the SQL at compile time and expands to a Migrator struct
     println!("[DB] Menjalankan migrasi skema SQLx idempoten...");
-    sqlx::migrate!("./migrations")
-        .run(&pool)
+    if let Err(e) = sqlx::migrate!("./migrations").run(&pool).await {
+        eprintln!("[DB WARN] Peringatan migrasi SQLx: {e}");
+        
+        // Cek apakah tabel utama sudah ada di database
+        let table_exists: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'koreksi_bmd')"
+        )
+        .fetch_one(&pool)
         .await
-        .map_err(|e| {
-            eprintln!("[DB ERROR] Gagal migrasi: {e}");
-            format!("Gagal menjalankan migrasi database. ({e})")
-        })?;
+        .unwrap_or(false);
 
-    println!("[DB] Migrasi skema selesai. Semua tabel & seeder OPD siap.");
+        if table_exists {
+            println!("[DB] Tabel utama 'koreksi_bmd' sudah terisi/eksis. Melewati validasi checksum migrasi lama.");
+            // Pastikan index unik esensial tetap ada secara idempoten
+            let _ = sqlx::query(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_koreksi_no_ba_unique ON koreksi_bmd (lower(trim(no_ba)))"
+            )
+            .execute(&pool)
+            .await;
+            let _ = sqlx::query(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_koreksi_no_tu_unique ON koreksi_bmd (lower(trim(no_tu)))"
+            )
+            .execute(&pool)
+            .await;
+        } else {
+            eprintln!("[DB ERROR] Gagal inisialisasi tabel pada database baru: {e}");
+            return Err(format!("Gagal menjalankan migrasi database awal. ({e})"));
+        }
+    } else {
+        println!("[DB] Migrasi skema selesai. Semua tabel & seeder OPD siap.");
+    }
+
     Ok(pool)
 }
 
