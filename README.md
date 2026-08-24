@@ -61,7 +61,7 @@ Skrip ini akan secara otomatis:
    * 📄 **`latest.json`** (Manifest metadata update untuk aplikasi)
 
 ### 3. Publikasi ke GitHub Releases
-1. Buka: `https://github.com/forceware680/BASI/releases/new`
+1. Buka: `https://github.com/username/BASI/releases/new`
 2. Masukkan Tag: `v1.0.1` dan Title: `SIMBASI BMD v1.0.1`.
 3. Unggah seluruh 3 file di dalam folder `release-output/`.
 4. Klik **Publish release**. Seluruh pengguna aplikasi desktop akan menerima notifikasi update otomatis dan dapat memperbarui aplikasi langsung hanya dengan 1 klik!
