@@ -1,6 +1,6 @@
 {
   "name": "sim-ba-koreksi",
-  "version": "0.1.0",
+  "version": "1.1.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,6 +8,7 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",
+    "set-version": "powershell -ExecutionPolicy Bypass -File ./set-version.ps1",
     "setup:pgsql": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-portable-pgsql.ps1"
   },
   "dependencies": {
