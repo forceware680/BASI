@@ -344,6 +344,81 @@ async fn restore_backup(
     crate::commands::backup::restore_backup(app, &db).await
 }
 
+#[tauri::command]
+async fn login(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    username: String,
+    password: String,
+) -> Result<crate::models::UserSession, String> {
+    let db = db_state.pool().await;
+    crate::commands::auth::login(&db, username, password).await
+}
+
+#[tauri::command]
+async fn change_password(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    user_id: String,
+    old_password: String,
+    new_password: String,
+) -> Result<(), String> {
+    let db = db_state.pool().await;
+    crate::commands::auth::change_password(&db, user_id, old_password, new_password).await
+}
+
+#[tauri::command]
+async fn get_session_user(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    user_id: String,
+) -> Result<Option<crate::models::UserSession>, String> {
+    let db = db_state.pool().await;
+    crate::commands::auth::get_session_user(&db, user_id).await
+}
+
+#[tauri::command]
+async fn list_users(
+    db_state: tauri::State<'_, crate::db::DbState>,
+) -> Result<Vec<crate::models::UserItem>, String> {
+    let db = db_state.pool().await;
+    crate::commands::users::list_users(&db).await
+}
+
+#[tauri::command]
+async fn create_user(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    payload: crate::models::CreateUserDto,
+) -> Result<crate::models::UserItem, String> {
+    let db = db_state.pool().await;
+    crate::commands::users::create_user(&db, payload).await
+}
+
+#[tauri::command]
+async fn update_user(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    payload: crate::models::UpdateUserDto,
+) -> Result<crate::models::UserItem, String> {
+    let db = db_state.pool().await;
+    crate::commands::users::update_user(&db, payload).await
+}
+
+#[tauri::command]
+async fn reset_user_password(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    id: String,
+    new_password: String,
+) -> Result<(), String> {
+    let db = db_state.pool().await;
+    crate::commands::users::reset_user_password(&db, id, new_password).await
+}
+
+#[tauri::command]
+async fn delete_user(
+    db_state: tauri::State<'_, crate::db::DbState>,
+    id: String,
+) -> Result<(), String> {
+    let db = db_state.pool().await;
+    crate::commands::users::delete_user(&db, id).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -377,6 +452,14 @@ pub fn run() {
             open_bukti_path,
             create_backup,
             restore_backup,
+            login,
+            change_password,
+            get_session_user,
+            list_users,
+            create_user,
+            update_user,
+            reset_user_password,
+            delete_user,
         ])
         .setup(|app| {
             println!("============================================================");

@@ -130,7 +130,56 @@ pub async fn connect_with_url(url: &str) -> Result<DbPool, String> {
         println!("[DB] Migrasi skema selesai. Semua tabel & seeder OPD siap.");
     }
 
+    // Pastikan tabel users dan akun default admin selalu siap secara idempoten
+    ensure_users_and_admin(&pool).await;
+
     Ok(pool)
+}
+
+/// Pastikan tabel users dan akun admin default terpasang secara aman
+async fn ensure_users_and_admin(pool: &DbPool) {
+    let _ = sqlx::query(
+        "CREATE TABLE IF NOT EXISTS users (
+            id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            username      VARCHAR(50) NOT NULL UNIQUE,
+            password_hash VARCHAR(255) NOT NULL,
+            full_name     VARCHAR(100) NOT NULL,
+            role          VARCHAR(20) NOT NULL CHECK (role IN ('ADMIN', 'USER')),
+            is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_login_at TIMESTAMPTZ
+        );",
+    )
+    .execute(pool)
+    .await;
+
+    let _ = sqlx::query(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_lower ON users (lower(trim(username)));",
+    )
+    .execute(pool)
+    .await;
+
+    // Cek apakah akun admin sudah ada
+    let admin_exists: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM users WHERE role = 'ADMIN')")
+        .fetch_one(pool)
+        .await
+        .unwrap_or(false);
+
+    if !admin_exists {
+        println!("[DB] Menginisialisasi akun Administrator default ('admin')...");
+        let hash = bcrypt::hash("admin123", 10).unwrap_or_else(|_| {
+            "$2b$10$vI8aWBnW3fID.ZQ4/zo1G.qHkK3mSGe7q8k6rA.7y54WbC1mY5hE6".to_string()
+        });
+        let _ = sqlx::query(
+            "INSERT INTO users (username, password_hash, full_name, role, is_active)
+             VALUES ('admin', $1, 'Administrator BPKAD', 'ADMIN', TRUE)
+             ON CONFLICT (username) DO NOTHING;",
+        )
+        .bind(&hash)
+        .execute(pool)
+        .await;
+        println!("[DB] Akun admin default berhasil disiapkan (username: admin, password: admin123).");
+    }
 }
 
 /// Helper default connect dari DEFAULT_DATABASE_URL / env

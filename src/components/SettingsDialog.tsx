@@ -2,7 +2,9 @@
 // Desain Dark Mode & Light Mode berstandar WCAG AAA dengan Tonal Elevation & Atmospheric UI.
 
 import { useState, useEffect } from "react";
+import { useAuth } from "../lib/auth";
 import {
+  ShieldAlert,
   Server,
   HardDrive,
   Cloud,
@@ -37,6 +39,7 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ open, onClose, onSaved }: SettingsDialogProps) {
+  const { isAdmin } = useAuth();
   const [config, setConfig] = useState<AppConfig>({
     mode: "offline",
     database_url: PRESET_LOCAL_DB,
@@ -171,10 +174,12 @@ export function SettingsDialog({ open, onClose, onSaved }: SettingsDialogProps) 
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                Pengaturan Koneksi & Database
+                Pengaturan Mode & Koneksi
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Pilih mode penyimpanan database lokal atau server cloud terpusat
+                {isAdmin
+                  ? "Pilih mode operasional dan kelola kredensial database / file API"
+                  : "Beralih antara Mode Penyimpanan Lokal (Offline) atau Cloud (Online)"}
               </p>
             </div>
           </div>
@@ -203,10 +208,20 @@ export function SettingsDialog({ open, onClose, onSaved }: SettingsDialogProps) 
                 </div>
               )}
 
+              {/* Informational Banner for Non-Admin */}
+              {!isAdmin && (
+                <div className="p-3.5 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 text-indigo-900 dark:text-indigo-200 text-xs flex items-start gap-2.5 shadow-sm">
+                  <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5 text-indigo-600 dark:text-indigo-400" />
+                  <span className="leading-relaxed">
+                    Anda masuk sebagai <strong>User Biasa</strong>. Anda dapat beralih antara <strong>Mode Offline</strong> dan <strong>Mode Online</strong>. Kredensial server database dan storage key diamankan dan hanya dapat dikelola oleh Administrator.
+                  </span>
+                </div>
+              )}
+
               {/* Mode Selection Cards */}
               <div className="space-y-2">
                 <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Mode Operasional Database
+                  Pilih Mode Operasional
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {/* Card Offline */}
@@ -276,177 +291,182 @@ export function SettingsDialog({ open, onClose, onSaved }: SettingsDialogProps) 
                 </div>
               </div>
 
-              {/* Database Connection URL */}
-              <div className="space-y-2 pt-4 border-t border-slate-200/80 dark:border-slate-800">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-                    <Database className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                    URL PostgreSQL Connection String
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setConfig((prev) => ({
-                          ...prev,
-                          database_url:
-                            prev.mode === "online" ? PRESET_ONLINE_DB : PRESET_LOCAL_DB,
-                        }))
-                      }
-                      className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:underline flex items-center gap-1 transition-colors"
-                      title="Gunakan template default"
-                    >
-                      <RotateCcw className="h-3 w-3" />
-                      Gunakan Template {config.mode === "online" ? "Cloud" : "Lokal"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="relative">
-                  <input
-                    type={showDbPassword ? "text" : "password"}
-                    value={config.database_url}
-                    onChange={(e) => {
-                      setConfig((prev) => ({ ...prev, database_url: e.target.value }));
-                      setDbTestResult(null);
-                    }}
-                    placeholder="postgres://user:password@host:port/database"
-                    className="w-full rounded-xl border border-slate-300 dark:border-slate-700/80 bg-slate-50/80 dark:bg-slate-950/70 px-3.5 py-2.5 pr-20 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:bg-white dark:focus:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all"
-                  />
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setShowDbPassword(!showDbPassword)}
-                      className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
-                    >
-                      {showDbPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleTestDb}
-                      disabled={testingDb}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-200/80 hover:bg-indigo-600 hover:text-white dark:bg-slate-800 dark:border dark:border-slate-700 dark:hover:bg-indigo-600 dark:hover:border-indigo-500 text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition-all disabled:opacity-50 shadow-sm"
-                    >
-                      {testingDb ? <Loader2 className="h-3 w-3 animate-spin" /> : <Radio className="h-3 w-3" />}
-                      Tes
-                    </button>
-                  </div>
-                </div>
-
-                {dbTestResult && (
-                  <div
-                    className={`p-3 rounded-xl text-xs flex items-start gap-2.5 shadow-sm transition-all ${
-                      dbTestResult.success
-                        ? "bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/70 text-emerald-900 dark:text-emerald-200"
-                        : "bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/70 text-rose-900 dark:text-rose-200"
-                    }`}
-                  >
-                    {dbTestResult.success ? (
-                      <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
-                    ) : (
-                      <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
-                    )}
-                    <span className="break-all leading-relaxed">{dbTestResult.message}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Mode Online File API Configuration */}
-              {config.mode === "online" && (
-                <div className="space-y-4 pt-4 border-t border-slate-200/80 dark:border-slate-800 animate-in fade-in duration-150">
-                  <div className="space-y-2">
+              {/* Bagian Sensitif: Hanya Ditampilkan untuk Role ADMIN */}
+              {isAdmin && (
+                <>
+                  {/* Database Connection URL */}
+                  <div className="space-y-2 pt-4 border-t border-slate-200/80 dark:border-slate-800 animate-in fade-in duration-150">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-                        <Server className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                        URL File API Service (Penyimpanan Berkas Scan)
+                        <Database className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                        URL PostgreSQL Connection String
                       </label>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setConfig((prev) => ({
-                            ...prev,
-                            storage_api_url: PRESET_ONLINE_STORAGE,
-                          }))
-                        }
-                        className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:underline flex items-center gap-1 transition-colors"
-                      >
-                        <RotateCcw className="h-3 w-3" />
-                        Preset Domain
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setConfig((prev) => ({
+                              ...prev,
+                              database_url:
+                                prev.mode === "online" ? PRESET_ONLINE_DB : PRESET_LOCAL_DB,
+                            }))
+                          }
+                          className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:underline flex items-center gap-1 transition-colors"
+                          title="Gunakan template default"
+                        >
+                          <RotateCcw className="h-3 w-3" />
+                          Gunakan Template {config.mode === "online" ? "Cloud" : "Lokal"}
+                        </button>
+                      </div>
                     </div>
 
                     <div className="relative">
                       <input
-                        type="text"
-                        value={config.storage_api_url}
+                        type={showDbPassword ? "text" : "password"}
+                        value={config.database_url}
                         onChange={(e) => {
-                          setConfig((prev) => ({ ...prev, storage_api_url: e.target.value }));
-                          setStorageTestResult(null);
+                          setConfig((prev) => ({ ...prev, database_url: e.target.value }));
+                          setDbTestResult(null);
                         }}
-                        placeholder="http://simbasi.bpkad.web.id atau https://storage.domain.com"
+                        placeholder="postgres://user:password@host:port/database"
                         className="w-full rounded-xl border border-slate-300 dark:border-slate-700/80 bg-slate-50/80 dark:bg-slate-950/70 px-3.5 py-2.5 pr-20 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:bg-white dark:focus:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all"
                       />
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                         <button
                           type="button"
-                          onClick={handleTestStorage}
-                          disabled={testingStorage}
+                          onClick={() => setShowDbPassword(!showDbPassword)}
+                          className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
+                        >
+                          {showDbPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleTestDb}
+                          disabled={testingDb}
                           className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-200/80 hover:bg-indigo-600 hover:text-white dark:bg-slate-800 dark:border dark:border-slate-700 dark:hover:bg-indigo-600 dark:hover:border-indigo-500 text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition-all disabled:opacity-50 shadow-sm"
                         >
-                          {testingStorage ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <Radio className="h-3 w-3" />
-                          )}
+                          {testingDb ? <Loader2 className="h-3 w-3 animate-spin" /> : <Radio className="h-3 w-3" />}
                           Tes
                         </button>
                       </div>
                     </div>
 
-                    {storageTestResult && (
+                    {dbTestResult && (
                       <div
                         className={`p-3 rounded-xl text-xs flex items-start gap-2.5 shadow-sm transition-all ${
-                          storageTestResult.success
+                          dbTestResult.success
                             ? "bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/70 text-emerald-900 dark:text-emerald-200"
                             : "bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/70 text-rose-900 dark:text-rose-200"
                         }`}
                       >
-                        {storageTestResult.success ? (
+                        {dbTestResult.success ? (
                           <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
                         ) : (
                           <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
                         )}
-                        <span className="break-all leading-relaxed">{storageTestResult.message}</span>
+                        <span className="break-all leading-relaxed">{dbTestResult.message}</span>
                       </div>
                     )}
                   </div>
 
-                  {/* API Key */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-                      <Key className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                      API Key Secret (Opsional)
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showApiKey ? "text" : "password"}
-                        value={config.storage_api_key}
-                        onChange={(e) =>
-                          setConfig((prev) => ({ ...prev, storage_api_key: e.target.value }))
-                        }
-                        placeholder="Contoh: simbasi_secret_key_bpkad_magelang"
-                        className="w-full rounded-xl border border-slate-300 dark:border-slate-700/80 bg-slate-50/80 dark:bg-slate-950/70 px-3.5 py-2.5 pr-10 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:bg-white dark:focus:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowApiKey(!showApiKey)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
-                      >
-                        {showApiKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                      </button>
+                  {/* Mode Online File API Configuration */}
+                  {config.mode === "online" && (
+                    <div className="space-y-4 pt-4 border-t border-slate-200/80 dark:border-slate-800 animate-in fade-in duration-150">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                            <Server className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                            URL File API Service (Penyimpanan Berkas Scan)
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfig((prev) => ({
+                                ...prev,
+                                storage_api_url: PRESET_ONLINE_STORAGE,
+                              }))
+                            }
+                            className="text-[11px] font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:underline flex items-center gap-1 transition-colors"
+                          >
+                            <RotateCcw className="h-3 w-3" />
+                            Preset Domain
+                          </button>
+                        </div>
+
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={config.storage_api_url}
+                            onChange={(e) => {
+                              setConfig((prev) => ({ ...prev, storage_api_url: e.target.value }));
+                              setStorageTestResult(null);
+                            }}
+                            placeholder="http://simbasi.bpkad.web.id atau https://storage.domain.com"
+                            className="w-full rounded-xl border border-slate-300 dark:border-slate-700/80 bg-slate-50/80 dark:bg-slate-950/70 px-3.5 py-2.5 pr-20 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:bg-white dark:focus:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all"
+                          />
+                          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                            <button
+                              type="button"
+                              onClick={handleTestStorage}
+                              disabled={testingStorage}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-200/80 hover:bg-indigo-600 hover:text-white dark:bg-slate-800 dark:border dark:border-slate-700 dark:hover:bg-indigo-600 dark:hover:border-indigo-500 text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition-all disabled:opacity-50 shadow-sm"
+                            >
+                              {testingStorage ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Radio className="h-3 w-3" />
+                              )}
+                              Tes
+                            </button>
+                          </div>
+                        </div>
+
+                        {storageTestResult && (
+                          <div
+                            className={`p-3 rounded-xl text-xs flex items-start gap-2.5 shadow-sm transition-all ${
+                              storageTestResult.success
+                                ? "bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/70 text-emerald-900 dark:text-emerald-200"
+                                : "bg-rose-50/90 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/70 text-rose-900 dark:text-rose-200"
+                            }`}
+                          >
+                            {storageTestResult.success ? (
+                              <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
+                            ) : (
+                              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+                            )}
+                            <span className="break-all leading-relaxed">{storageTestResult.message}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* API Key */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                          <Key className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                          API Key Secret (Opsional)
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showApiKey ? "text" : "password"}
+                            value={config.storage_api_key}
+                            onChange={(e) =>
+                              setConfig((prev) => ({ ...prev, storage_api_key: e.target.value }))
+                            }
+                            placeholder="Contoh: simbasi_secret_key_bpkad_magelang"
+                            className="w-full rounded-xl border border-slate-300 dark:border-slate-700/80 bg-slate-50/80 dark:bg-slate-950/70 px-3.5 py-2.5 pr-10 text-xs font-mono text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:bg-white dark:focus:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 transition-all"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowApiKey(!showApiKey)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
+                          >
+                            {showApiKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
+                  )}
+                </>
               )}
             </>
           )}
