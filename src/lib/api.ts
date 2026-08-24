@@ -180,3 +180,91 @@ export async function createBackup(): Promise<string | null> {
 export async function restoreBackup(): Promise<string | null> {
   return invoke("restore_backup");
 }
+
+// =========================================================================
+// AUTENTIKASI & MANAJEMEN PENGGUNA (RBAC)
+// =========================================================================
+
+export interface UserSession {
+  id: string;
+  username: string;
+  full_name: string;
+  role: "ADMIN" | "OPERATOR" | "USER";
+}
+
+export interface UserItem {
+  id: string;
+  username: string;
+  full_name: string;
+  role: "ADMIN" | "OPERATOR" | "USER";
+  is_active: boolean;
+  created_at: string;
+  last_login_at?: string;
+}
+
+export interface CreateUserDto {
+  username: string;
+  password: string;
+  full_name: string;
+  role: "ADMIN" | "OPERATOR" | "USER";
+}
+
+export interface UpdateUserDto {
+  id: string;
+  full_name: string;
+  role: "ADMIN" | "OPERATOR" | "USER";
+  is_active: boolean;
+}
+
+export async function login(
+  username: string,
+  password: string,
+): Promise<UserSession> {
+  return invoke("login", { username, password });
+}
+
+export async function changePassword(
+  userId: string,
+  oldPassword: string,
+  newPassword: string,
+): Promise<void> {
+  return invoke("change_password", {
+    userId,
+    oldPassword,
+    newPassword,
+  });
+}
+
+export async function getSessionUser(
+  userId: string,
+): Promise<UserSession | null> {
+  return invoke("get_session_user", { userId });
+}
+
+export async function listUsers(): Promise<UserItem[]> {
+  return invoke("list_users");
+}
+
+export async function createUser(
+  payload: CreateUserDto,
+): Promise<UserItem> {
+  return invoke("create_user", { payload });
+}
+
+export async function updateUser(
+  payload: UpdateUserDto,
+): Promise<UserItem> {
+  return invoke("update_user", { payload });
+}
+
+export async function resetUserPassword(
+  id: string,
+  newPassword: string,
+): Promise<void> {
+  return invoke("reset_user_password", { id, newPassword });
+}
+
+export async function deleteUser(id: string): Promise<void> {
+  return invoke("delete_user", { id });
+}
+

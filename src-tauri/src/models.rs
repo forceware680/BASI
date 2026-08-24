@@ -49,9 +49,11 @@ pub struct CreateKoreksiDto {
     /// 'YYYY-MM-DD'
     pub tanggal_surat: String,
     pub penjelasan_koreksi: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
 }
 
-/// Baris koreksi BMD (join nama_opd).
+/// Baris koreksi BMD (join nama_opd & users).
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct KoreksiRow {
     pub id: String,
@@ -73,6 +75,12 @@ pub struct KoreksiRow {
     /// path storage file bukti (internal, untuk viewer & hapus-lama).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by_role: Option<String>,
 }
 
 /// Validasi payload (server-side). Mengembalikan pesan error (Bahasa Indonesia)
@@ -102,3 +110,44 @@ pub fn validate(payload: &CreateKoreksiDto) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// Data Pengguna Aplikasi untuk Autentikasi & RBAC.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UserItem {
+    pub id: String,
+    pub username: String,
+    pub full_name: String,
+    pub role: String, // "ADMIN" | "USER"
+    pub is_active: bool,
+    pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_login_at: Option<String>,
+}
+
+/// Sesi Pengguna Aktif (dikirim ke frontend setelah login sukses).
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UserSession {
+    pub id: String,
+    pub username: String,
+    pub full_name: String,
+    pub role: String, // "ADMIN" | "USER"
+}
+
+/// DTO untuk membuat pengguna baru.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CreateUserDto {
+    pub username: String,
+    pub password: String,
+    pub full_name: String,
+    pub role: String, // "ADMIN" | "USER"
+}
+
+/// DTO untuk memperbarui data pengguna.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct UpdateUserDto {
+    pub id: String,
+    pub full_name: String,
+    pub role: String, // "ADMIN" | "USER"
+    pub is_active: bool,
+}
+

@@ -16,6 +16,7 @@ export interface CreateKoreksiDto {
   /** 'YYYY-MM-DD' */
   tanggal_surat: string;
   penjelasan_koreksi: string;
+  created_by?: string | null;
 }
 
 export interface KoreksiRow {
@@ -35,6 +36,9 @@ export interface KoreksiRow {
   created_at: string;
   /** path storage file bukti (internal). */
   file_path: string | null;
+  created_by?: string | null;
+  created_by_name?: string | null;
+  created_by_role?: string | null;
 }
 
 /** Helper: hari ini (YYYY-MM-DD). */

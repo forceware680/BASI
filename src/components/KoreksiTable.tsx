@@ -34,6 +34,7 @@ const COLUMNS = [
   { id: "opd", header: "OPD Pengusul" },
   { id: "tanggal", header: "Tanggal Surat" },
   { id: "status", header: "Status Sirkulasi" },
+  { id: "diinput_oleh", header: "Diinput Oleh" },
   { id: "aksi", header: "Aksi Dokumen" },
 ];
 
@@ -89,7 +90,8 @@ export function KoreksiTable({
         r.no_ba.toLowerCase().includes(q) ||
         r.no_tu.toLowerCase().includes(q) ||
         r.nama_opd.toLowerCase().includes(q) ||
-        r.penjelasan_koreksi.toLowerCase().includes(q)
+        r.penjelasan_koreksi.toLowerCase().includes(q) ||
+        (r.created_by_name && r.created_by_name.toLowerCase().includes(q))
       );
     });
   }, [rows, search, statusFilter]);
@@ -125,7 +127,7 @@ export function KoreksiTable({
                 setSearch(e.target.value);
                 setPage(0);
               }}
-              placeholder="Cari No. BA, No. TU, OPD, uraian..."
+              placeholder="Cari No. BA, No. TU, OPD, uraian, petugas..."
               className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-950 py-2 pl-9 pr-4 text-xs sm:text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 transition-all focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
             />
             {search && (
@@ -204,6 +206,7 @@ export function KoreksiTable({
                 <th className="px-4 py-3.5 min-w-[220px]">OPD Pengusul</th>
                 <th className="px-4 py-3.5 w-32">Tanggal Surat</th>
                 <th className="px-4 py-3.5 w-36">Status</th>
+                <th className="px-4 py-3.5 min-w-[180px]">Diinput Oleh</th>
                 <th className="px-4 py-3.5 w-36 text-center">Aksi</th>
               </tr>
             </thead>
@@ -212,6 +215,9 @@ export function KoreksiTable({
                 const r = row.original;
                 const isUploading = uploadingId === r.id;
                 const isMenuOpen = menuAnchor?.id === r.id;
+
+                const creatorName = r.created_by_name || "Administrator";
+                const isCreatorAdmin = r.created_by_role === "ADMIN" || (!r.created_by_role && !r.created_by_name);
 
                 return (
                   <tr
@@ -239,6 +245,23 @@ export function KoreksiTable({
                     </td>
                     <td className="px-4 py-3.5 whitespace-nowrap">
                       <StatusBadge status={r.status} />
+                    </td>
+                    {/* Kolom Diinput Oleh: Format Nama [Role Badge] */}
+                    <td className="px-4 py-3.5 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-xs text-slate-800 dark:text-slate-200">
+                          {creatorName}
+                        </span>
+                        {isCreatorAdmin ? (
+                          <span className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 font-bold text-[10px]">
+                            Admin
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-bold text-[10px]">
+                            Operator
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3.5 text-center whitespace-nowrap">
                       {/* Compact Icon-Only Action Group */}
@@ -309,7 +332,7 @@ export function KoreksiTable({
               {/* Tampilan Kosong (Empty State) */}
               {rowModel.rows.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-16 text-center">
+                  <td colSpan={7} className="py-16 text-center">
                     <div className="mx-auto flex max-w-sm flex-col items-center justify-center">
                       <div className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400">
                         <FileQuestion className="h-7 w-7" />
