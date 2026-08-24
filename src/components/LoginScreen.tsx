@@ -179,7 +179,7 @@ export function LoginScreen() {
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               Sistem Aktif & Terlindungi
             </span>
-            <span className="font-mono text-[10px] text-slate-400">v1.1.1</span>
+            <span className="font-mono text-[10px] text-slate-400">v1.2.0</span>
           </div>
         </div>
       </main>

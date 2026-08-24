@@ -1,6 +1,6 @@
 {
   "name": "sim-ba-koreksi",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",
     "set-version": "powershell -ExecutionPolicy Bypass -File ./set-version.ps1",
+    "make-release": "powershell -ExecutionPolicy Bypass -File ./make-release.ps1",
     "setup:pgsql": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-portable-pgsql.ps1"
   },
   "dependencies": {
@@ -19,6 +20,8 @@
     "@tanstack/react-table": "^8.19.0",
     "@tauri-apps/api": "^2.1.0",
     "@tauri-apps/plugin-dialog": "^2.2.0",
+    "@tauri-apps/plugin-process": "^2.0.0",
+    "@tauri-apps/plugin-updater": "^2.1.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "lucide-react": "^0.441.0",

@@ -22,6 +22,7 @@ import { EksporLaporanDialog } from "./components/EksporLaporanDialog";
 import { SettingsDialog } from "./components/SettingsDialog";
 import { UserManagementDialog } from "./components/UserManagementDialog";
 import { ChangePasswordDialog } from "./components/ChangePasswordDialog";
+import { UpdateDialog } from "./components/UpdateDialog";
 import { LoginScreen } from "./components/LoginScreen";
 import { RekapitulasiPrintSheet } from "./components/print/RekapitulasiPrintSheet";
 import type { KoreksiRow } from "./lib/types";
@@ -29,6 +30,8 @@ import { getDbInfo, toggleConsole } from "./lib/api";
 import type { DbInfo } from "./lib/api";
 import { useTheme } from "./lib/theme";
 import { AuthProvider, useAuth } from "./lib/auth";
+import { check } from "@tauri-apps/plugin-updater";
+import { Sparkles } from "lucide-react";
 
 function MainApp() {
   const { user, isAdmin, isLoading, logout } = useAuth();
@@ -39,8 +42,21 @@ function MainApp() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [userManagementOpen, setUserManagementOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
+  const [hasUpdateBadge, setHasUpdateBadge] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Periksa pembaruan di background saat aplikasi dibuka
+  useEffect(() => {
+    check()
+      .then((update) => {
+        if (update && update.available) {
+          setHasUpdateBadge(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const [consoleVisible, setConsoleVisible] = useState(false);
   const [dbInfo, setDbInfo] = useState<DbInfo | null>(null);
@@ -209,10 +225,15 @@ function MainApp() {
               <button
                 type="button"
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                className="flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm transition-all cursor-pointer"
+                className="relative flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm transition-all cursor-pointer"
               >
-                <div className="h-7 w-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shadow-sm">
-                  {user.full_name.charAt(0).toUpperCase()}
+                <div className="relative">
+                  <div className="h-7 w-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shadow-sm">
+                    {user.full_name.charAt(0).toUpperCase()}
+                  </div>
+                  {hasUpdateBadge && (
+                    <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-amber-500 ring-2 ring-white dark:ring-slate-800 animate-pulse" />
+                  )}
                 </div>
                 <div className="text-left hidden sm:block">
                   <div className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-tight max-w-[120px] truncate">
@@ -257,6 +278,26 @@ function MainApp() {
 
                   {/* Menu Items */}
                   <div className="space-y-0.5 text-xs">
+                    {/* Pembaruan Sistem (Auto Updater) */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileDropdownOpen(false);
+                        setUpdateOpen(true);
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 dark:hover:text-indigo-400 font-medium transition-colors text-left cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Sparkles className="h-4 w-4 text-amber-500" />
+                        <span>Pembaruan Sistem</span>
+                      </div>
+                      {hasUpdateBadge && (
+                        <span className="px-1.5 py-0.5 rounded-md bg-amber-500 text-white font-bold text-[9px] uppercase tracking-wider">
+                          Baru
+                        </span>
+                      )}
+                    </button>
+
                     {/* Manajemen Pengguna (Khusus Admin) */}
                     {isAdmin && (
                       <button
@@ -312,6 +353,15 @@ function MainApp() {
         <KoreksiListPage
           key={refreshKey}
           onRowsLoaded={setAllRows}
+          onOpenRekapPrint={(rows, dateFrom, dateTo, statusLabel, opdLabel) => {
+            setReportPrint({
+              rows,
+              dateFrom,
+              dateTo,
+              statusLabel,
+              opdLabel,
+            });
+          }}
         />
       </main>
 
@@ -361,6 +411,12 @@ function MainApp() {
       <ChangePasswordDialog
         open={changePasswordOpen}
         onClose={() => setChangePasswordOpen(false)}
+      />
+
+      {/* Modal Pembaruan Sistem (Auto Updater) */}
+      <UpdateDialog
+        open={updateOpen}
+        onClose={() => setUpdateOpen(false)}
       />
 
       {/* Lembar Cetak Rekapitulasi Laporan (Tampil Hanya Saat Dicetak) */}
