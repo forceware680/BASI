@@ -4201,7 +4201,7 @@ dependencies = [
 
 [[package]]
 name = "sim-ba-koreksi"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "base64 0.22.1",
  "bcrypt",
