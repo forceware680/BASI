@@ -353,15 +353,6 @@ function MainApp() {
         <KoreksiListPage
           key={refreshKey}
           onRowsLoaded={setAllRows}
-          onOpenRekapPrint={(rows, dateFrom, dateTo, statusLabel, opdLabel) => {
-            setReportPrint({
-              rows,
-              dateFrom,
-              dateTo,
-              statusLabel,
-              opdLabel,
-            });
-          }}
         />
       </main>
 
