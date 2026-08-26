@@ -21,7 +21,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Lock,
   Calendar,
 } from "lucide-react";
 
@@ -43,7 +42,7 @@ export function UserManagementDialog({ open, onClose }: UserManagementDialogProp
   const [formUsername, setFormUsername] = useState("");
   const [formFullName, setFormFullName] = useState("");
   const [formPassword, setFormPassword] = useState("");
-  const [formRole, setFormRole] = useState<"ADMIN" | "USER">("USER");
+  const [formRole, setFormRole] = useState<"ADMIN" | "OPERATOR" | "USER">("USER");
   const [formIsActive, setFormIsActive] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 

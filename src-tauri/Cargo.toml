@@ -1,6 +1,6 @@
 [package]
 name = "sim-ba-koreksi"
-version = "1.0.1"
+version = "1.0.2"
 description = "SIM-BA Koreksi BMD - Desktop Tracking Ekspedisi & Tanda Terima Tunggal"
 authors = ["Forceware"]
 edition = "2021"
