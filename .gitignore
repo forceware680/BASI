@@ -23,6 +23,7 @@ src-tauri/resources/pgsql/
 .env.*.local
 !.env.example
 *.key
+!simbasi.key
 !*.key.pub
 
 # Logs & Temporary Files
