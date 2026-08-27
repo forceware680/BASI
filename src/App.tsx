@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { KoreksiListPage } from "./pages/KoreksiListPage";
 import logoKotaMagelang from "./assets/logo-kota-magelang.png";
 import {
@@ -8,6 +8,7 @@ import {
   Moon,
   Sun,
   Cloud,
+  CloudOff,
   HardDrive,
   Users,
   KeyRound,
@@ -25,13 +26,17 @@ import { ChangePasswordDialog } from "./components/ChangePasswordDialog";
 import { UpdateDialog } from "./components/UpdateDialog";
 import { LoginScreen } from "./components/LoginScreen";
 import { RekapitulasiPrintSheet } from "./components/print/RekapitulasiPrintSheet";
+import { CloudOfflineModal } from "./components/CloudOfflineModal";
 import type { KoreksiRow } from "./lib/types";
-import { getDbInfo, toggleConsole } from "./lib/api";
+import { getDbInfo, toggleConsole, pingDb, getAppConfig, saveAppConfig } from "./lib/api";
 import type { DbInfo } from "./lib/api";
 import { useTheme } from "./lib/theme";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { check } from "@tauri-apps/plugin-updater";
 import { Sparkles } from "lucide-react";
+
+// Koneksi default PostgreSQL lokal (Mode Offline) — dipakai saat beralih dari cloud.
+const LOCAL_DB_URL = "postgresql://postgres:postgres@localhost:5432/sim_ba_koreksi";
 
 function MainApp() {
   const { user, isAdmin, isLoading, logout } = useAuth();
@@ -72,11 +77,10 @@ function MainApp() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [allRows, setAllRows] = useState<KoreksiRow[]>([]);
 
-  // Muat status mode database saat aplikasi startup
+  // Muat status mode database saat startup (termasuk saat belum login, agar
+  // deteksi cloud-offline bisa berjalan sebelum autentikasi).
   useEffect(() => {
-    if (user) {
-      getDbInfo().then(setDbInfo).catch(console.error);
-    }
+    getDbInfo().then(setDbInfo).catch(console.error);
   }, [refreshKey, user]);
 
   // Klik di luar dropdown profil untuk menutup
@@ -93,6 +97,64 @@ function MainApp() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // --- Pemantauan server cloud (hanya saat Mode Online) ---
+  const isOnlineMode = dbInfo?.mode.includes("Online") ?? false;
+  const [cloudDown, setCloudDown] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [switchingMode, setSwitchingMode] = useState(false);
+
+  const checkCloud = useCallback(async () => {
+    try {
+      const ok = await pingDb();
+      setCloudDown(!ok);
+      // Reset penolakan agar pemberitahuan muncul lagi bila cloud offline di kemudian hari.
+      if (ok) setBannerDismissed(false);
+    } catch {
+      setCloudDown(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isOnlineMode) {
+      setCloudDown(false);
+      return;
+    }
+    checkCloud();
+    const id = setInterval(checkCloud, 15000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") checkCloud();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", checkCloud);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", checkCloud);
+    };
+  }, [isOnlineMode, checkCloud]);
+
+  const handleSwitchToOffline = async () => {
+    setSwitchingMode(true);
+    try {
+      const cfg = await getAppConfig();
+      await saveAppConfig({
+        ...cfg,
+        mode: "offline",
+        database_url: LOCAL_DB_URL,
+      });
+      setCloudDown(false);
+      setBannerDismissed(false);
+      setRefreshKey((prev) => prev + 1);
+      // Beralih server berarti berpindah basis data; reset sesi agar pengguna
+      // melakukan login ulang terhadap server lokal (jika sebelumnya sudah login).
+      if (user) logout();
+    } catch (err) {
+      alert(typeof err === "string" ? err : "Gagal beralih ke server lokal (offline).");
+    } finally {
+      setSwitchingMode(false);
+    }
+  };
+
   const handleToggleConsole = async () => {
     const next = !consoleVisible;
     try {
@@ -102,6 +164,9 @@ function MainApp() {
       // Abaikan jika non-windows
     }
   };
+
+  // Tampilkan popup tawaran beralih ke server lokal (offline) saat cloud offline.
+  const showCloudModal = isOnlineMode && cloudDown && !bannerDismissed;
 
   if (isLoading) {
     return (
@@ -115,13 +180,22 @@ function MainApp() {
     );
   }
 
-  // Jika belum login, tampilkan layar masuk
-  if (!user) {
-    return <LoginScreen />;
-  }
-
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col font-sans text-slate-800 dark:text-slate-100 transition-colors duration-200 antialiased">
+    <>
+      {/* Popup tawaran beralih ke server lokal (offline) saat cloud offline.
+          Ditaruh di sini agar tetap muncul bahkan saat belum login. */}
+      <CloudOfflineModal
+        open={showCloudModal}
+        switching={switchingMode}
+        onSwitch={handleSwitchToOffline}
+        onRetry={checkCloud}
+        onClose={() => setBannerDismissed(true)}
+      />
+
+      {!user ? (
+        <LoginScreen />
+      ) : (
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col font-sans text-slate-800 dark:text-slate-100 transition-colors duration-200 antialiased">
       {/* Header Resmi Pemerintah Kota Magelang */}
       <header className="sticky top-0 z-30 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur px-4 sm:px-8 py-2.5 sm:py-3 shadow-sm transition-colors">
         <div className="mx-auto flex max-w-[1700px] w-full items-center justify-between gap-3">
@@ -209,15 +283,31 @@ function MainApp() {
               }
               className="flex items-center gap-1.5 sm:gap-2 rounded-full border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900 px-2.5 sm:px-3 py-1.5 text-xs text-slate-600 dark:text-slate-400 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-white dark:hover:bg-slate-800 cursor-pointer select-none transition-all shrink-0"
             >
-              {dbInfo?.mode.includes("Online") ? (
-                <Cloud className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              {dbInfo?.mode.includes("Online") && cloudDown ? (
+                <>
+                  <CloudOff className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span className="font-semibold text-amber-700 dark:text-amber-300 hidden xl:inline">
+                    Cloud Offline
+                  </span>
+                  <span className="h-2 w-2 rounded-full bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.7)] shrink-0" />
+                </>
+              ) : dbInfo?.mode.includes("Online") ? (
+                <>
+                  <Cloud className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span className="font-semibold text-slate-700 dark:text-slate-200 hidden xl:inline">
+                    {dbInfo?.mode || "Database"}
+                  </span>
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)] shrink-0" />
+                </>
               ) : (
-                <HardDrive className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <>
+                  <HardDrive className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  <span className="font-semibold text-slate-700 dark:text-slate-200 hidden xl:inline">
+                    {dbInfo?.mode || "Database"}
+                  </span>
+                  <span className="h-2 w-2 rounded-full bg-indigo-500 shadow-[0_0_6px_rgba(99,102,241,0.6)] shrink-0" />
+                </>
               )}
-              <span className="font-semibold text-slate-700 dark:text-slate-200 hidden sm:inline">
-                {dbInfo?.mode || "Database"}
-              </span>
-              <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)] shrink-0" />
             </button>
 
             {/* Profil Pengguna & Menu RBAC Dropdown */}
@@ -423,6 +513,8 @@ function MainApp() {
         />
       )}
     </div>
+      )}
+    </>
   );
 }
 

@@ -48,6 +48,11 @@ export async function getDbInfo(): Promise<DbInfo> {
   return invoke("get_db_info");
 }
 
+/** Cek kesehatan koneksi ke database yang sedang aktif (offline bila server tidak dapat dihubungi). */
+export async function pingDb(): Promise<boolean> {
+  return invoke("ping_db");
+}
+
 export async function listOpd(
   search?: string,
 ): Promise<Opd[]> {
