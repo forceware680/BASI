@@ -27,12 +27,13 @@ import { UpdateDialog } from "./components/UpdateDialog";
 import { LoginScreen } from "./components/LoginScreen";
 import { RekapitulasiPrintSheet } from "./components/print/RekapitulasiPrintSheet";
 import { CloudOfflineModal } from "./components/CloudOfflineModal";
+import { ForceUpdateModal } from "./components/ForceUpdateModal";
 import type { KoreksiRow } from "./lib/types";
 import { getDbInfo, toggleConsole, pingDb, getAppConfig, saveAppConfig } from "./lib/api";
 import type { DbInfo } from "./lib/api";
 import { useTheme } from "./lib/theme";
 import { AuthProvider, useAuth } from "./lib/auth";
-import { check } from "@tauri-apps/plugin-updater";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 import { Sparkles } from "lucide-react";
 
 // Koneksi default PostgreSQL lokal (Mode Offline) — dipakai saat beralih dari cloud.
@@ -49,19 +50,41 @@ function MainApp() {
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
   const [hasUpdateBadge, setHasUpdateBadge] = useState(false);
+  const [forceUpdate, setForceUpdate] = useState<Update | null>(null);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Periksa pembaruan di background saat aplikasi dibuka
-  useEffect(() => {
-    check()
-      .then((update) => {
-        if (update && update.available) {
-          setHasUpdateBadge(true);
-        }
-      })
-      .catch(() => {});
+  // Periksa pembaruan di background saat aplikasi dibuka: set badge & aktifkan
+  // gerbang "Pembaruan Wajib" bila versi lebih baru tersedia. Hanya dipaksakan
+  // bila server pembaruan benar-benar dapat dihubungi (offline-safe) dan diperiksa
+  // ulang berkala + saat jendela dikembalikan ke fokus.
+  const checkForUpdate = useCallback(async () => {
+    try {
+      const update = await check();
+      if (update && update.available) {
+        setHasUpdateBadge(true);
+        // Simpan objek Update pertama kali terkonfirmasi agar modal tidak di-reset ulang.
+        setForceUpdate((prev) => prev ?? update);
+      }
+    } catch {
+      // Abaikan bila server pembaruan tidak terjangkau (offline / error).
+    }
   }, []);
+
+  useEffect(() => {
+    checkForUpdate();
+    const id = setInterval(checkForUpdate, 30000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") checkForUpdate();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", checkForUpdate);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", checkForUpdate);
+    };
+  }, [checkForUpdate]);
 
   const [consoleVisible, setConsoleVisible] = useState(false);
   const [dbInfo, setDbInfo] = useState<DbInfo | null>(null);
@@ -182,6 +205,10 @@ function MainApp() {
 
   return (
     <>
+      {/* Gerbang "Pembaruan Wajib" — blocking, non-dismissible. Muncul di atas
+          seluruh layar (termasuk pre-login) saat versi rilis lebih baru tersedia. */}
+      {forceUpdate && <ForceUpdateModal update={forceUpdate} />}
+
       {/* Popup tawaran beralih ke server lokal (offline) saat cloud offline.
           Ditaruh di sini agar tetap muncul bahkan saat belum login. */}
       <CloudOfflineModal
