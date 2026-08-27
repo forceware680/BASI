@@ -63,7 +63,25 @@ async fn save_app_config(
     // 1. Simpan ke berkas config.json
     crate::config::save_config(&app, &config)?;
 
-    // 2. Hubungkan ulang DbPool ke target database baru & jalankan migrasi
+    // 2. Jika beralih ke mode offline, pastikan PostgreSQL lokal/portabel aktif terlebih dahulu
+    //    (agar hot-switch saat aplikasi berjalan tetap dapat terhubung ke server lokal).
+    if config.mode == "offline" {
+        let app_clone = app.clone();
+        let data_dir = tauri::async_runtime::spawn_blocking(move || {
+            crate::pgsql_daemon::ensure_pgsql_running(&app_clone)
+        })
+        .await
+        .map_err(|e| format!("Gagal menjalankan proses PostgreSQL: {e}"))??;
+
+        // Catat direktori data daemon agar dapat dihentikan dengan aman saat aplikasi keluar.
+        if let Some(ref d) = data_dir {
+            if let Ok(mut guard) = app.state::<PortableDbState>().0.lock() {
+                *guard = Some(d.clone());
+            }
+        }
+    }
+
+    // 3. Hubungkan ulang DbPool ke target database baru & jalankan migrasi
     let new_pool = crate::db::connect_with_url(&config.database_url).await?;
     db_state.set_pool(new_pool).await;
 
@@ -72,6 +90,19 @@ async fn save_app_config(
         config.mode
     );
     Ok(())
+}
+
+/// Cek kesehatan koneksi ke database yang sedang dikonfigurasi (tanpa menggantung).
+/// Mengembalikan `true` bila server dapat dihubungi, `false` bila offline/timeout.
+#[tauri::command]
+async fn ping_db(app: tauri::AppHandle) -> Result<bool, String> {
+    let cfg = crate::config::load_config(&app);
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(6),
+        crate::db::test_connection(&cfg.database_url),
+    )
+    .await;
+    Ok(matches!(result, Ok(Ok(_))))
 }
 
 #[tauri::command]
@@ -431,6 +462,7 @@ pub fn run() {
             toggle_console,
             get_app_config,
             save_app_config,
+            ping_db,
             test_db_connection,
             test_storage_api_connection,
             get_db_info,
@@ -496,7 +528,9 @@ pub fn run() {
             };
             app.manage(PortableDbState(Mutex::new(portable_dir)));
 
-            // Koneksi DB non-blocking (Lazy Pool) di dalam Tokio runtime context
+            // Koneksi DB non-blocking (Lazy Pool) di dalam Tokio runtime context.
+            // App tetap dapat boot meskipun server database tidak dapat dihubungi
+            // (pool dibuat lazy; migrasi & seed berjalan di background, warn-only).
             let pool = tauri::async_runtime::block_on(async {
                 crate::db::create_pool(&config.database_url)
             })
@@ -510,7 +544,6 @@ pub fn run() {
                     eprintln!("[DB ASYNC WARN] Inisialisasi skema background: {e}");
                 }
             });
-
             app.manage(crate::db::DbState(tokio::sync::RwLock::new(pool)));
             Ok(())
         })

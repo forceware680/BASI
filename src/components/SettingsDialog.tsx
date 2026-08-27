@@ -1,7 +1,7 @@
 // SettingsDialog.tsx — Pengaturan Koneksi Database (Offline vs Online) & File API Service.
 // Desain Dark Mode & Light Mode berstandar WCAG AAA dengan Tonal Elevation & Atmospheric UI.
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../lib/auth";
 import {
   ShieldAlert,
@@ -39,7 +39,7 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ open, onClose, onSaved }: SettingsDialogProps) {
-  const { isAdmin } = useAuth();
+  const { isAdmin, logout } = useAuth();
   const [config, setConfig] = useState<AppConfig>({
     mode: "offline",
     database_url: PRESET_LOCAL_DB,
@@ -62,6 +62,13 @@ export function SettingsDialog({ open, onClose, onSaved }: SettingsDialogProps) 
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Simpan URL database saat dialog dibuka, agar dapat mendeteksi apakah koneksi berubah
+  // (pergantian mode / URL = berpindah basis data → sesi login harus direset).
+  const initialDbUrlRef = useRef<string | null>(null);
+
+  // Simpan mode yang sedang aktif (dipakai) saat dialog dibuka, untuk menampilkan badge "Current".
+  const initialModeRef = useRef<"offline" | "online" | null>(null);
+
   useEffect(() => {
     if (open) {
       setLoading(true);
@@ -72,6 +79,8 @@ export function SettingsDialog({ open, onClose, onSaved }: SettingsDialogProps) 
       getAppConfig()
         .then((cfg) => {
           setConfig(cfg);
+          initialDbUrlRef.current = cfg.database_url;
+          initialModeRef.current = cfg.mode;
         })
         .catch((err) => {
           setErrorMsg(typeof err === "string" ? err : "Gagal memuat konfigurasi.");
@@ -148,12 +157,19 @@ export function SettingsDialog({ open, onClose, onSaved }: SettingsDialogProps) 
     setSaving(true);
     setErrorMsg(null);
     try {
+      // Deteksi perubahan basis data (pergantian mode / URL koneksi). Bila berubah,
+      // sesi login saat ini tidak lagi valid → kembalikan pengguna ke halaman login.
+      const dbChanged =
+        initialDbUrlRef.current !== null &&
+        config.database_url.trim() !== initialDbUrlRef.current.trim();
+
       await saveAppConfig({
         ...config,
         database_url: config.database_url.trim(),
         storage_api_url: config.storage_api_url.trim(),
         storage_api_key: config.storage_api_key.trim(),
       });
+      if (dbChanged) logout();
       onSaved();
       onClose();
     } catch (err) {
@@ -248,6 +264,11 @@ export function SettingsDialog({ open, onClose, onSaved }: SettingsDialogProps) 
                         <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
                           Mode Offline (Lokal)
                         </span>
+                        {initialModeRef.current === "offline" && (
+                          <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60 text-[10px] font-bold">
+                            Current
+                          </span>
+                        )}
                       </div>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
                         Data dan berkas scan disimpan di komputer ini (PostgreSQL Portabel / Standalone).
@@ -279,6 +300,11 @@ export function SettingsDialog({ open, onClose, onSaved }: SettingsDialogProps) 
                         <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
                           Mode Online (Cloud)
                         </span>
+                        {initialModeRef.current === "online" && (
+                          <span className="px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60 text-[10px] font-bold">
+                            Current
+                          </span>
+                        )}
                         <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60 text-[10px] font-bold">
                           Multi-User
                         </span>
