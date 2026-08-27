@@ -174,8 +174,10 @@ async fn ensure_users_and_admin(pool: &DbPool) {
 
     if !admin_exists {
         println!("[DB] Menginisialisasi akun Administrator default ('admin')...");
+        // Default password: "admin123". Fallback adalah hash "admin123" yang valid,
+        // dipakai bila bcrypt gagal agar akun default tetap dapat login.
         let hash = bcrypt::hash("admin123", 10).unwrap_or_else(|_| {
-            "$2b$10$vI8aWBnW3fID.ZQ4/zo1G.qHkK3mSGe7q8k6rA.7y54WbC1mY5hE6".to_string()
+            "$2b$10$GyMEAt531Ag2yYqOV9ghYu9iuMNOaKnFXw4BhXTzyQhEI82x6dPqC".to_string()
         });
         let _ = sqlx::query(
             "INSERT INTO users (username, password_hash, full_name, role, is_active)
@@ -187,6 +189,15 @@ async fn ensure_users_and_admin(pool: &DbPool) {
         .await;
         println!("[DB] Akun admin default berhasil disiapkan (username: admin, password: admin123).");
     }
+}
+
+/// Buat pool "lazy" yang tidak memvalidasi koneksi saat dibuat.
+/// Digunakan sebagai fallback (mode degradasi) agar aplikasi tetap dapat berjalan
+/// saat server database tidak dapat dihubungi — pengguna masih dapat melihat pemberitahuan
+/// dan beralih ke mode lain.
+pub fn lazy_pool_from_url(url: &str) -> DbPool {
+    let opts = PgConnectOptions::from_str(url).unwrap_or_default();
+    sqlx::PgPool::connect_lazy_with(opts)
 }
 
 /// Helper default connect dari DEFAULT_DATABASE_URL / env
