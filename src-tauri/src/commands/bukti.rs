@@ -638,43 +638,47 @@ pub async fn delete_bukti(app: tauri::AppHandle, db: &PgPool, id: String) -> Res
 /// Baca bukti: baik Mode Online maupun Offline, kembalikan Data URL Base64 yang di-encode langsung dari Rust native.
 /// Ini menjamin 100% kompatibilitas pada production build (https://tauri.localhost) tanpa terblokir Mixed Content / Iframe X-Frame-Options.
 pub async fn get_bukti_base64(app: tauri::AppHandle, db: &PgPool, id: String) -> Result<(String, String), String> {
-    let fp: (Option<String>,) = sqlx::query_as(
-        "SELECT file_path FROM koreksi_bmd WHERE id=$1::uuid",
+    let row: (Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT file_path, file_name FROM koreksi_bmd WHERE id=$1::uuid",
     )
     .bind(&id)
     .fetch_one(db)
     .await
     .map_err(|_| "Record tidak ditemukan.".to_string())?;
-    let fp = fp.0.ok_or("Belum ada file bukti.".to_string())?;
     
+    let fp = row.0.ok_or_else(|| "Belum ada file bukti.".to_string())?;
     let fp_norm = fp.replace('\\', "/");
     let mime = mime_of(&fp_norm).unwrap_or("application/octet-stream").to_string();
     let cfg = crate::config::load_config(&app);
 
-    // MODE ONLINE: Cek cache disk lokal terlebih dahulu (Instan < 3ms), jika belum ada unduh sekali dari server
+    // Ambil nama file asli
+    let fname = row.1.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| {
+        std::path::Path::new(&fp_norm)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default()
+    });
+
+    let cache_dir = std::env::temp_dir().join("simbasi_cache");
+    let _ = std::fs::create_dir_all(&cache_dir);
+    let cached_file = cache_dir.join(format!("{}_{}", id, fname));
+
+    // MODE ONLINE: Cek cache disk lokal terlebih dahulu (Instan < 3ms), jika belum ada unduh sekali dari server Cloud
     if cfg.mode == "online" && !cfg.storage_api_url.trim().is_empty() {
         let base_url = cfg.storage_api_url.trim_end_matches('/');
-        let clean_rel = fp_norm.trim_start_matches("bukti/").trim_start_matches('/');
-        let parts: Vec<&str> = clean_rel.split('/').collect();
-        if parts.len() >= 2 {
-            let k_id = parts[0];
-            let fname = parts[1];
 
-            // 1. Cek direktori cache disk lokal
-            let cache_dir = std::env::temp_dir().join("simbasi_cache");
-            let _ = std::fs::create_dir_all(&cache_dir);
-            let cached_file = cache_dir.join(format!("{}_{}", k_id, fname));
-
-            if cached_file.exists() {
-                if let Ok(bytes) = std::fs::read(&cached_file) {
-                    let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                    let data_url = format!("data:{mime};base64,{encoded}");
-                    return Ok((mime, data_url));
-                }
+        // 1. Cek direktori cache disk lokal
+        if cached_file.exists() {
+            if let Ok(bytes) = std::fs::read(&cached_file) {
+                let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                let data_url = format!("data:{mime};base64,{encoded}");
+                return Ok((mime, data_url));
             }
+        }
 
-            // 2. Jika belum ada di cache, unduh dari server Cloud lalu simpan ke disk cache
-            let download_url = format!("{base_url}/api/bukti/{k_id}/{fname}");
+        // 2. Jika belum ada di cache, unduh dari server Cloud lalu simpan ke disk cache
+        if !fname.is_empty() {
+            let download_url = format!("{base_url}/api/bukti/{id}/{fname}");
 
             let client = reqwest::Client::builder()
                 .tcp_nodelay(true)
@@ -687,29 +691,39 @@ pub async fn get_bukti_base64(app: tauri::AppHandle, db: &PgPool, id: String) ->
                 req = req.header("x-api-key", cfg.storage_api_key.trim());
             }
 
-            match req.send().await {
-                Ok(resp) => {
-                    let status = resp.status();
-                    if status.is_success() {
-                        if let Ok(bytes) = resp.bytes().await {
-                            // Simpan ke disk cache lokal untuk akses instan berikutnya
-                            let _ = std::fs::write(&cached_file, &bytes);
+            if let Ok(resp) = req.send().await {
+                if resp.status().is_success() {
+                    if let Ok(bytes) = resp.bytes().await {
+                        // Simpan ke disk cache lokal untuk akses instan berikutnya
+                        let _ = std::fs::write(&cached_file, &bytes);
 
-                            let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                            let data_url = format!("data:{mime};base64,{encoded}");
-                            return Ok((mime, data_url));
-                        }
+                        let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                        let data_url = format!("data:{mime};base64,{encoded}");
+                        return Ok((mime, data_url));
                     }
-                    return Err(format!("Server File API mengembalikan status error: {}", status));
-                }
-                Err(e) => {
-                    return Err(format!("Gagal mengunduh berkas bukti dari server: {e}"));
                 }
             }
         }
     }
 
-    // MODE OFFLINE: Baca dari filesystem lokal
+    // Fallback: Jika cache lokal ada
+    if cached_file.exists() {
+        if let Ok(bytes) = std::fs::read(&cached_file) {
+            let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            let data_url = format!("data:{mime};base64,{encoded}");
+            return Ok((mime, data_url));
+        }
+    }
+
+    // MODE OFFLINE / Fallback ke folder penyimpanan lokal AppData
+    if let Ok(app_dir) = crate::storage::app_root(&app) {
+        let local_path = app_dir.join("bukti").join(&id).join(&fname);
+        if local_path.exists() {
+            return crate::storage::read_bukti_as_data_url(&local_path.to_string_lossy())
+                .map_err(|e| format!("File bukti tidak dapat dibaca: {e}"));
+        }
+    }
+
     crate::storage::read_bukti_as_data_url(&fp)
         .map_err(|e| format!("File bukti tidak dapat dibaca: {e}"))
 }

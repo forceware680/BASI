@@ -186,15 +186,13 @@ pub async fn read_remote_as_data_url(
     stored_path: &str,
 ) -> Result<(String, String), String> {
     let base_url = storage_api_url.trim_end_matches('/');
-    
-    // stored_path berformat: "bukti/{koreksi_id}/{filename}" atau URL penuh
-    let clean_rel = stored_path.trim_start_matches("bukti/").trim_start_matches('/');
-    let parts: Vec<&str> = clean_rel.split('/').collect();
+    let norm = stored_path.replace('\\', "/");
+    let parts: Vec<&str> = norm.split('/').filter(|s| !s.is_empty()).collect();
     if parts.len() < 2 {
         return Err(format!("Format path remote tidak valid: {stored_path}"));
     }
-    let koreksi_id = parts[0];
-    let filename = parts[1];
+    let koreksi_id = parts[parts.len() - 2];
+    let filename = parts[parts.len() - 1];
 
     let target_url = format!("{base_url}/api/bukti/base64/{koreksi_id}/{filename}");
     let client = reqwest::Client::new();
@@ -225,13 +223,13 @@ pub async fn delete_remote_file(
     stored_path: &str,
 ) -> Result<(), String> {
     let base_url = storage_api_url.trim_end_matches('/');
-    let clean_rel = stored_path.trim_start_matches("bukti/").trim_start_matches('/');
-    let parts: Vec<&str> = clean_rel.split('/').collect();
+    let norm = stored_path.replace('\\', "/");
+    let parts: Vec<&str> = norm.split('/').filter(|s| !s.is_empty()).collect();
     if parts.len() < 2 {
         return Ok(());
     }
-    let koreksi_id = parts[0];
-    let filename = parts[1];
+    let koreksi_id = parts[parts.len() - 2];
+    let filename = parts[parts.len() - 1];
 
     let target_url = format!("{base_url}/api/bukti/{koreksi_id}/{filename}");
     let client = reqwest::Client::new();
