@@ -531,7 +531,6 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
     }
 
     // 5. Ekstrak seluruh file bukti dari zip ke {app_data_dir}/bukti/
-    let mut extracted_files: Vec<(String, std::path::PathBuf)> = Vec::new();
     for i in 0..archive.len() {
         if let Ok(mut zip_file) = archive.by_index(i) {
             let name = zip_file.name().replace('\\', "/");
@@ -543,54 +542,123 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
                 }
                 if let Ok(mut outfile) = File::create(&out_path) {
                     let _ = std::io::copy(&mut zip_file, &mut outfile);
-                    extracted_files.push((rel, out_path));
                 }
             }
         }
     }
     drop(archive);
 
-    // 6. Jika mode online, upload berkas yang baru diekstrak ke File API Service Cloud
+    // Nama file kanonik per koreksi dari data.json (sumber acuan viewer/DB).
+    let canonical_fname = |k: &KoreksiRow| -> Option<String> {
+        k.file_name
+            .as_deref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .and_then(|s| {
+                Path::new(&s)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .filter(|n| !n.is_empty())
+            })
+    };
+
+    // 5b. Normalisasi nama file fisik agar identik dengan file_name di database.
+    // Arsip backup menyimpan file dengan NAMA PENYIMPANAN (mis. {timestamp}_{nama}
+    // dari server File API), sedangkan database memakai nama asli (file_name).
+    // Jika tidak disamakan, viewer tidak menemukan file dan gagal dengan
+    // "The system cannot find the file specified" (os error 2) saat restore ke lokal/offline.
+    for k in &backup_data.koreksi_list {
+        let Some(fname) = canonical_fname(k) else {
+            continue;
+        };
+        let k_dir = bukti_root.join(&k.id);
+        let target = k_dir.join(&fname);
+        if target.exists() {
+            continue;
+        }
+        // 1) Prioritas: file yang persis nama referensinya ada di data.json (file_path).
+        // 2) Fallback: file terbaru di folder koreksi ini.
+        let stored_fname = k
+            .file_path
+            .as_deref()
+            .map(|fp| {
+                Path::new(&fp.replace('\\', "/"))
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+            })
+            .flatten()
+            .filter(|n| !n.is_empty());
+        let source = stored_fname
+            .map(|n| k_dir.join(&n))
+            .filter(|p| p.exists())
+            .or_else(|| {
+                fs::read_dir(&k_dir)
+                    .map(|entries| {
+                        entries
+                            .flatten()
+                            .filter(|e| e.path().is_file())
+                            .filter_map(|e| e.metadata().ok().and_then(|m| m.modified().ok()).map(|t| (t, e.path())))
+                            .into_iter()
+                            .max_by_key(|(t, _)| *t)
+                            .map(|(_, p)| p)
+                    })
+                    .unwrap_or(None)
+            });
+        if let Some(source) = source {
+            if fs::rename(&source, &target).is_ok() {
+                println!(
+                    "[RESTORE] Normalisasi nama file: {} -> {}",
+                    source.to_string_lossy(),
+                    target.to_string_lossy()
+                );
+            }
+        }
+    }
+
+    // 6. Jika mode online, upload berkas yang sudah dinormalisasi ke File API Service Cloud
     if cfg.mode == "online" && !cfg.storage_api_url.trim().is_empty() {
-        println!("[RESTORE] Mengunggah {} berkas hasil pemulihan ke Cloud Server...", extracted_files.len());
         let cache_dir = std::env::temp_dir().join("simbasi_cache");
         let _ = std::fs::create_dir_all(&cache_dir);
+        let mut uploaded_count = 0;
 
-        for (rel, path) in extracted_files {
-            let rel_norm = rel.replace('\\', "/");
-            let parts: Vec<&str> = rel_norm.split('/').filter(|s| !s.is_empty()).collect();
-            if parts.len() >= 2 {
-                let k_id = parts[0];
-                let orig_fname = parts[1];
+        for k in &backup_data.koreksi_list {
+            let Some(fname) = canonical_fname(k) else {
+                continue;
+            };
+            let path = bukti_root.join(&k.id).join(&fname);
+            if !path.exists() {
+                continue;
+            }
 
-                // Simpan juga ke cache lokal
-                let _ = std::fs::copy(&path, cache_dir.join(format!("{}_{}", k_id, orig_fname)));
+            // Simpan juga ke cache lokal dengan nama yang sama dengan di database
+            let _ = std::fs::copy(&path, cache_dir.join(format!("{}_{}", k.id, fname)));
 
-                match crate::storage::upload_to_remote_exact(
-                    &cfg.storage_api_url,
-                    &cfg.storage_api_key,
-                    k_id,
-                    &path.to_string_lossy(),
-                )
-                .await {
-                    Ok((remote_path, fname, ftype)) => {
-                        println!("[RESTORE] Sukses mengunggah berkas: {}", remote_path);
-                        let _ = sqlx::query(
-                            "UPDATE koreksi_bmd SET file_path = $1, file_name = $2, file_type = $3 WHERE id = $4::uuid",
-                        )
-                        .bind(&remote_path)
-                        .bind(&fname)
-                        .bind(&ftype)
-                        .bind(k_id)
-                        .execute(db)
-                        .await;
-                    }
-                    Err(e) => {
-                        eprintln!("[RESTORE ERROR] Gagal mengunggah berkas {}: {}", orig_fname, e);
-                    }
+            match crate::storage::upload_to_remote_exact(
+                &cfg.storage_api_url,
+                &cfg.storage_api_key,
+                &k.id,
+                &path.to_string_lossy(),
+            )
+            .await {
+                Ok((remote_path, f_up, ftype)) => {
+                    uploaded_count += 1;
+                    println!("[RESTORE] Sukses mengunggah berkas: {}", remote_path);
+                    let _ = sqlx::query(
+                        "UPDATE koreksi_bmd SET file_path = $1, file_name = $2, file_type = $3 WHERE id = $4::uuid",
+                    )
+                    .bind(&remote_path)
+                    .bind(&f_up)
+                    .bind(&ftype)
+                    .bind(&k.id)
+                    .execute(db)
+                    .await;
+                }
+                Err(e) => {
+                    eprintln!("[RESTORE ERROR] Gagal mengunggah berkas {}: {}", fname, e);
                 }
             }
         }
+        println!("[RESTORE] Mengunggah {} berkas hasil pemulihan ke Cloud Server.", uploaded_count);
     }
 
     let user_msg = if !backup_data.users_list.is_empty() {
