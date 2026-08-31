@@ -88,6 +88,13 @@ Aplikasi SIMBASI BMD dirancang fleksibel untuk dapat berjalan secara independen 
   ```
 * **Hot-Switch Runtime**: Pengguna dapat berpindah antara Mode Offline dan Online langsung melalui menu **"Pengaturan Koneksi & Database"** tanpa perlu restart aplikasi.
 
+### 3. Deteksi Otomatis Server Cloud Offline & Beralih ke Lokal
+Kondisi ketika server cloud tidak dapat dihubungi ditangani secara otomatis sehingga pengguna tidak terputus di tengah operasi:
+* **Pemantauan Konektivitas**: Pada Mode Online, aplikasi memeriksa konektivitas server cloud secara berkala (setiap 15 detik) dan setiap kali jendela aplikasi dikembalikan ke fokus.
+* **Peringatan (Modal)**: Jika server cloud tidak dapat dijangkau — baik sebelum maupun setelah login — sebuah dialog peringatan bernuansa **amber** akan muncul di atas layar aktif, termasuk di atas halaman Login.
+* **Beralih ke Server Lokal (Satu Klik)**: Melalui tombol **"Beralih ke Server Lokal"**, aplikasi menghidupkan PostgreSQL lokal portabel, mengarahkan seluruh koneksi ke basis data lokal, dan mengembalikan pengguna ke layar Login untuk autentikasi terhadap server lokal (default lokal: `admin` / `admin123`).
+* **Indikator Koneksi Aktif**: Menu **"Pengaturan Koneksi & Database"** menampilkan lencana **"Current"** pada kartu mode yang sedang aktif, sehingga pengguna selalu mengetahui server mana yang sedang digunakan.
+
 ---
 
 ## 👥 Autentikasi & Hak Akses (RBAC)
@@ -110,6 +117,7 @@ Aplikasi memiliki sistem login aman berbasis token sesi dan password hashing bcr
 ## ✨ Fitur Utama
 
 * **In-App Auto Updater**: Pemeriksaan versi baru di latar belakang dengan indikator badge dan dialog unduh otomatis berkecepatan tinggi.
+* **Deteksi Server Cloud Offline Otomatis**: Pemantauan konektivitas cloud secara berkala dengan dialog peringatan dan beralih satu-klik ke server lokal ketika server terpusat tidak dapat dijangkau (bahkan sebelum login).
 * **Kolom Pencatat & Role Badge**: Informasi transparan mengenai nama dan peran petugas penginput pada setiap baris data ekspedisi.
 * **Master Data 45 OPD**: Pilihan instansi/unit kerja pengusul dengan fitur penambahan instansi baru secara langsung.
 * **Auto-Format Nomor Dinas**: Otomatisasi format nomor surat dinas standar Kota Magelang (`000.2.3.2/[nomor]/440`).

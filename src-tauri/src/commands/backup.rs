@@ -261,6 +261,11 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
     // 2. Restore Akun Pengguna (Users) ke database aktif
     if !backup_data.users_list.is_empty() {
         println!("[RESTORE] Memulihkan {} akun pengguna...", backup_data.users_list.len());
+        // Hapus check constraint lama jika ada agar peran OPERATOR diizinkan
+        let _ = sqlx::query("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check")
+            .execute(db)
+            .await;
+
         for u in &backup_data.users_list {
             // Bersihkan potensi konflik username dengan UUID berbeda
             let _ = sqlx::query(
@@ -270,6 +275,13 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
             .bind(&u.id)
             .execute(db)
             .await;
+
+            let created_at_val = if u.created_at.trim().is_empty() {
+                chrono::Utc::now().to_rfc3339()
+            } else {
+                u.created_at.clone()
+            };
+            let last_login_val = u.last_login_at.as_deref().filter(|s| !s.trim().is_empty());
 
             let _ = sqlx::query(
                 "INSERT INTO users (id, username, password_hash, full_name, role, is_active, created_at, last_login_at)
@@ -288,33 +300,85 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
             .bind(&u.full_name)
             .bind(&u.role)
             .bind(u.is_active)
-            .bind(&u.created_at)
-            .bind(&u.last_login_at)
+            .bind(&created_at_val)
+            .bind(last_login_val)
             .execute(db)
             .await;
         }
     }
 
-    // 3. Restore Master OPD ke database aktif
+    // 3. Restore Master OPD ke database aktif & buat mapping ID OPD yang aman
+    let mut opd_id_map: std::collections::HashMap<i32, i32> = std::collections::HashMap::new();
+
     for opd in &backup_data.opd_list {
-        sqlx::query(
-            "INSERT INTO master_opd (id, nama_opd, singkatan, is_active)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (id) DO UPDATE SET nama_opd = EXCLUDED.nama_opd, singkatan = EXCLUDED.singkatan, is_active = EXCLUDED.is_active",
+        // Cek apakah OPD dengan nama_opd yang sama sudah ada di DB target
+        let existing_opd: Option<(i32,)> = sqlx::query_as(
+            "SELECT id FROM master_opd WHERE lower(trim(nama_opd)) = lower(trim($1))"
         )
-        .bind(opd.id)
         .bind(&opd.nama_opd)
-        .bind(&opd.singkatan)
-        .bind(opd.is_active)
-        .execute(db)
+        .fetch_optional(db)
         .await
-        .map_err(db_err)?;
+        .unwrap_or(None);
+
+        if let Some((existing_id,)) = existing_opd {
+            let _ = sqlx::query(
+                "UPDATE master_opd SET singkatan = COALESCE($1, singkatan), is_active = $2 WHERE id = $3"
+            )
+            .bind(&opd.singkatan)
+            .bind(opd.is_active)
+            .bind(existing_id)
+            .execute(db)
+            .await;
+            opd_id_map.insert(opd.id, existing_id);
+        } else {
+            let ins_res = sqlx::query(
+                "INSERT INTO master_opd (id, nama_opd, singkatan, is_active)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (id) DO UPDATE SET nama_opd = EXCLUDED.nama_opd, singkatan = EXCLUDED.singkatan, is_active = EXCLUDED.is_active",
+            )
+            .bind(opd.id)
+            .bind(&opd.nama_opd)
+            .bind(&opd.singkatan)
+            .bind(opd.is_active)
+            .execute(db)
+            .await;
+
+            if ins_res.is_ok() {
+                opd_id_map.insert(opd.id, opd.id);
+            } else {
+                // Fallback insert auto-increment jika ID bentrok
+                let auto_res: Option<(i32,)> = sqlx::query_as(
+                    "INSERT INTO master_opd (nama_opd, singkatan, is_active) VALUES ($1, $2, $3) RETURNING id"
+                )
+                .bind(&opd.nama_opd)
+                .bind(&opd.singkatan)
+                .bind(opd.is_active)
+                .fetch_optional(db)
+                .await
+                .unwrap_or(None);
+
+                if let Some((new_id,)) = auto_res {
+                    opd_id_map.insert(opd.id, new_id);
+                }
+            }
+        }
     }
 
-    // Set sequence master_opd_id_seq agar tidak bentrok
+    // Set sequence master_opd_id_seq agar tidak bentrok dengan ID manual
     let _ = sqlx::query("SELECT setval('master_opd_id_seq', COALESCE((SELECT MAX(id)+1 FROM master_opd), 1), false)")
         .execute(db)
         .await;
+
+    // Ambil semua valid user ID di database target untuk verifikasi created_by FK
+    let valid_user_ids: std::collections::HashSet<String> = sqlx::query_as::<_, (String,)>(
+        "SELECT id::text FROM users"
+    )
+    .fetch_all(db)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .map(|r| r.0)
+    .collect();
 
     // 4. Restore Koreksi BMD ke database aktif
     let app_dir = crate::storage::app_root(&app)
@@ -326,24 +390,27 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
     let cfg = crate::config::load_config(&app);
 
     for k in &backup_data.koreksi_list {
-        let file_path_val = if let Some(ref fp_old) = k.file_path {
-            let fp_norm = fp_old.replace('\\', "/");
-            let fname = Path::new(&fp_norm)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
-            if !fname.is_empty() {
-                if cfg.mode == "online" {
-                    Some(format!("bukti/{}/{}", k.id, fname))
-                } else {
-                    Some(bukti_root.join(&k.id).join(&fname).to_string_lossy().to_string())
-                }
+        let fname = k.file_name.clone().or_else(|| {
+            k.file_path.as_ref().map(|fp| {
+                Path::new(&fp.replace('\\', "/"))
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default()
+            })
+        }).unwrap_or_default();
+
+        let file_path_val = if !fname.is_empty() {
+            if cfg.mode == "online" {
+                Some(format!("bukti/{}/{}", k.id, fname))
             } else {
-                None
+                Some(bukti_root.join(&k.id).join(&fname).to_string_lossy().to_string())
             }
         } else {
             None
         };
+
+        // Pemetaan opd_id yang valid
+        let target_opd_id = *opd_id_map.get(&k.opd_id).unwrap_or(&k.opd_id);
 
         // Bersihkan data lama di database target yang memiliki No BA atau No TU yang sama
         // namun berbeda ID UUID agar tidak melanggar unique constraint idx_koreksi_no_tu_unique / idx_koreksi_no_ba_unique
@@ -358,7 +425,13 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
         .execute(db)
         .await;
 
-        let created_by_val = k.created_by.as_deref().filter(|s| !s.trim().is_empty());
+        // Pastikan created_by hanya diisi jika user ID memang terdaftar di tabel users
+        let created_by_val = k.created_by.as_deref().filter(|s| {
+            !s.trim().is_empty() && valid_user_ids.contains(*s)
+        });
+
+        let uploaded_at_val = k.uploaded_at.as_deref().filter(|s| !s.trim().is_empty());
+        let file_name_val = if !fname.is_empty() { Some(fname.clone()) } else { k.file_name.clone() };
 
         sqlx::query(
             "INSERT INTO koreksi_bmd (id, no_tu, no_ba, opd_id, tanggal_surat, penjelasan_koreksi, status, file_path, file_name, file_type, uploaded_at, created_by)
@@ -379,14 +452,14 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
         .bind(&k.id)
         .bind(&k.no_tu)
         .bind(&k.no_ba)
-        .bind(k.opd_id)
+        .bind(target_opd_id)
         .bind(&k.tanggal_surat)
         .bind(&k.penjelasan_koreksi)
         .bind(k.status.to_db())
         .bind(&file_path_val)
-        .bind(&k.file_name)
+        .bind(&file_name_val)
         .bind(&k.file_type)
-        .bind(&k.uploaded_at)
+        .bind(uploaded_at_val)
         .bind(created_by_val)
         .execute(db)
         .await
@@ -397,10 +470,10 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
     let mut extracted_files: Vec<(String, std::path::PathBuf)> = Vec::new();
     for i in 0..archive.len() {
         if let Ok(mut zip_file) = archive.by_index(i) {
-            let name = zip_file.name().to_string();
+            let name = zip_file.name().replace('\\', "/");
             if name.starts_with("bukti/") && !name.ends_with('/') {
                 let rel = name["bukti/".len()..].to_string();
-                let out_path = bukti_root.join(&rel);
+                let out_path = bukti_root.join(rel.replace('/', "\\"));
                 if let Some(parent) = out_path.parent() {
                     let _ = fs::create_dir_all(parent);
                 }
@@ -415,13 +488,13 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
 
     // 6. Jika mode online, upload berkas yang baru diekstrak ke File API Service Cloud
     if cfg.mode == "online" && !cfg.storage_api_url.trim().is_empty() {
-        println!("[RESTORE] Mengunggah berkas-berkas hasil pemulihan ke Cloud Server...");
+        println!("[RESTORE] Mengunggah {} berkas hasil pemulihan ke Cloud Server...", extracted_files.len());
         let cache_dir = std::env::temp_dir().join("simbasi_cache");
         let _ = std::fs::create_dir_all(&cache_dir);
 
         for (rel, path) in extracted_files {
             let rel_norm = rel.replace('\\', "/");
-            let parts: Vec<&str> = rel_norm.split('/').collect();
+            let parts: Vec<&str> = rel_norm.split('/').filter(|s| !s.is_empty()).collect();
             if parts.len() >= 2 {
                 let k_id = parts[0];
                 let orig_fname = parts[1];

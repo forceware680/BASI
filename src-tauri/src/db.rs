@@ -175,6 +175,11 @@ async fn ensure_users_and_admin(pool: &DbPool) {
     .execute(pool)
     .await;
 
+    // Hapus batasan cek role lama jika ada agar peran OPERATOR diizinkan
+    let _ = sqlx::query("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;")
+        .execute(pool)
+        .await;
+
     // Cek apakah akun admin sudah ada
     let admin_exists: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM users WHERE role = 'ADMIN')")
         .fetch_one(pool)
