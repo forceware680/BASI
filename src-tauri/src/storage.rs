@@ -147,7 +147,10 @@ async fn upload_to_remote_internal(
     }
 
     let base_url = storage_api_url.trim_end_matches('/');
-    let target_url = format!("{base_url}/api/bukti/upload");
+    let target_url = format!(
+        "{base_url}/api/bukti/upload?koreksi_id={koreksi_id}{}",
+        if keep_name { "&keep_name=true" } else { "" }
+    );
 
     let mut req = client.post(&target_url).multipart(form);
     if !api_key.trim().is_empty() {
@@ -156,6 +159,7 @@ async fn upload_to_remote_internal(
     if keep_name {
         req = req.header("x-keep-name", "true");
     }
+    req = req.header("x-koreksi-id", koreksi_id);
 
     let resp = req.send().await.map_err(|e| {
         format!("Gagal menghubungi File API Service di {base_url}: {e}")
