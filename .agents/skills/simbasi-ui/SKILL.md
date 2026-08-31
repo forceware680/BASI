@@ -1,6 +1,6 @@
 ---
 name: simbasi-ui
-description: Alur & resep desain UI/UX aplikasi SIMBASI BMD (desktop Tauri + React 19 + Tailwind). Gunakan skill ini setiap kali menambah/mengubah tampilan — halaman, tabel, dialog, KPI, badge, toast, lembar cetak — agar hasilnya seirama dengan karakter visual aplikasi: institusional, padat-data, presisi, bebas ornamen generik AI.
+description: "Alur & resep desain UI/UX aplikasi SIMBASI BMD (desktop Tauri + React 19 + Tailwind). Gunakan skill ini setiap kali menambah/mengubah tampilan — halaman, tabel, dialog, KPI, badge, toast, lembar cetak — agar hasilnya seirama dengan karakter visual aplikasi: institusional, padat-data, presisi, bebas ornamen generik AI."
 ---
 
 # SKILL — Desain UI/UX SIMBASI BMD
