@@ -132,51 +132,69 @@ pub async fn create_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option<
         .unwrap_or_else(|_| reqwest::Client::new());
 
     for k in &backup_data.koreksi_list {
-        let fname = k.file_name.clone().or_else(|| {
-            k.file_path.as_ref().map(|fp| {
-                Path::new(&fp.replace('\\', "/"))
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_default()
-            })
-        }).unwrap_or_default();
+        // Ambil nama file dari file_path atau file_name
+        let stored_fname = k.file_path.as_ref().and_then(|fp| {
+            let fp_norm = fp.replace('\\', "/");
+            let name = Path::new(&fp_norm).file_name()?.to_str()?.to_string();
+            if !name.is_empty() { Some(name) } else { None }
+        }).or_else(|| k.file_name.clone()).unwrap_or_default();
 
-        if fname.is_empty() {
+        let mut found_for_this_koreksi = false;
+
+        // 1. Coba baca seluruh berkas yang ada di folder bukti AppData lokal untuk koreksi ID ini: %APPDATA%/bukti/{k.id}/
+        if let Some(ref app_dir) = app_dir_opt {
+            let k_dir = app_dir.join("bukti").join(&k.id);
+            if k_dir.is_dir() {
+                if let Ok(entries) = fs::read_dir(&k_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_file() {
+                            let entry_fname = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                            if !entry_fname.is_empty() {
+                                let entry_name = format!("bukti/{}/{}", k.id, entry_fname);
+                                if !added_entries.contains(&entry_name) {
+                                    if let Ok(b) = fs::read(&path) {
+                                        if zip.start_file(&entry_name, options).is_ok() && zip.write_all(&b).is_ok() {
+                                            added_entries.insert(entry_name.clone());
+                                            backed_up_files_count += 1;
+                                            found_for_this_koreksi = true;
+                                            println!("[BACKUP] Berhasil menambahkan file bukti lokal: {} ({} bytes)", entry_name, b.len());
+                                        }
+                                    }
+                                } else {
+                                    found_for_this_koreksi = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if found_for_this_koreksi || stored_fname.is_empty() {
             continue;
         }
 
-        let zip_entry_name = format!("bukti/{}/{}", k.id, fname);
+        let zip_entry_name = format!("bukti/{}/{}", k.id, stored_fname);
         if added_entries.contains(&zip_entry_name) {
             continue;
         }
 
         let mut file_bytes: Option<Vec<u8>> = None;
 
-        // 1. Coba baca dari folder bukti AppData lokal
-        if let Some(ref app_dir) = app_dir_opt {
-            let local_bukti = app_dir.join("bukti").join(&k.id).join(&fname);
-            if local_bukti.exists() {
-                if let Ok(b) = fs::read(&local_bukti) {
-                    file_bytes = Some(b);
-                }
-            }
-        }
-
         // 2. Coba baca langsung dari k.file_path jika merupakan path absolut lokal yang valid
-        if file_bytes.is_none() {
-            if let Some(ref fp) = k.file_path {
-                let p = Path::new(fp);
-                if p.is_absolute() && p.exists() {
-                    if let Ok(b) = fs::read(p) {
-                        file_bytes = Some(b);
-                    }
+        if let Some(ref fp) = k.file_path {
+            let p = Path::new(fp);
+            if p.is_absolute() && p.exists() {
+                if let Ok(b) = fs::read(p) {
+                    file_bytes = Some(b);
                 }
             }
         }
 
         // 3. Coba baca dari folder cache lokal simbasi_cache
         if file_bytes.is_none() {
-            let cached_file = temp_cache_dir.join(format!("{}_{}", k.id, fname));
+            let cached_file = temp_cache_dir.join(format!("{}_{}", k.id, stored_fname));
             if cached_file.exists() {
                 if let Ok(b) = fs::read(&cached_file) {
                     file_bytes = Some(b);
@@ -187,7 +205,7 @@ pub async fn create_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option<
         // 4. Jika belum ditemukan dan server File API dikonfigurasi, unduh dari Cloud
         if file_bytes.is_none() && !cfg.storage_api_url.trim().is_empty() {
             let base_url = cfg.storage_api_url.trim_end_matches('/');
-            let download_url = format!("{base_url}/api/bukti/{}/{}", k.id, fname);
+            let download_url = format!("{base_url}/api/bukti/{}/{}", k.id, stored_fname);
 
             let mut req = client.get(&download_url);
             if !cfg.storage_api_key.trim().is_empty() {
@@ -208,7 +226,7 @@ pub async fn create_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option<
             if zip.start_file(&zip_entry_name, options).is_ok() && zip.write_all(&bytes).is_ok() {
                 added_entries.insert(zip_entry_name.clone());
                 backed_up_files_count += 1;
-                println!("[BACKUP] Berhasil menambahkan file bukti: {} ({} bytes)", zip_entry_name, bytes.len());
+                println!("[BACKUP] Berhasil menambahkan file bukti dari cache/cloud: {} ({} bytes)", zip_entry_name, bytes.len());
             }
         }
     }
@@ -226,7 +244,16 @@ pub async fn create_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option<
     zip.finish()
         .map_err(|e| format!("Gagal menyelesaikan pembuatan arsip backup. ({e})"))?;
 
-    Ok(Some(target_path.to_string_lossy().to_string()))
+    let summary_msg = format!(
+        "{}\n(Memuat {} akun pengguna, {} master OPD, {} data BA Koreksi, dan {} berkas fisik scan bukti)",
+        target_path.to_string_lossy(),
+        backup_data.users_list.len(),
+        backup_data.opd_list.len(),
+        backup_data.koreksi_list.len(),
+        backed_up_files_count
+    );
+
+    Ok(Some(summary_msg))
 }
 
 fn add_dir_to_zip<W: Write + std::io::Seek>(

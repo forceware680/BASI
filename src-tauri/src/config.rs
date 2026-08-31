@@ -11,7 +11,8 @@ pub const DEFAULT_LOCAL_DB_URL: &str =
 pub const DEFAULT_ONLINE_DB_URL: &str =
     "postgres://postgres:XSRMfNGXXAd7aRvTyanmMGbcRLIVDmxB4nf5CwFEU4g5j7VYKTvVxEWMcvRsT8bH@45.198.155.126:27492/sim_ba_koreksi";
 
-pub const DEFAULT_STORAGE_API_URL: &str = "http://45.198.155.126:3000";
+pub const DEFAULT_STORAGE_API_URL: &str = "http://simbasi.bpkad.web.id";
+pub const DEFAULT_STORAGE_API_KEY: &str = "simbasi_secret_key_bpkad_magelang";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct AppConfig {
@@ -48,7 +49,15 @@ pub fn load_config(app: &tauri::AppHandle) -> AppConfig {
     if let Ok(path) = config_path(app) {
         if path.exists() {
             if let Ok(content) = fs::read_to_string(&path) {
-                if let Ok(cfg) = serde_json::from_str::<AppConfig>(&content) {
+                if let Ok(mut cfg) = serde_json::from_str::<AppConfig>(&content) {
+                    if cfg.mode == "online" {
+                        if cfg.storage_api_url.trim().is_empty() {
+                            cfg.storage_api_url = DEFAULT_STORAGE_API_URL.to_string();
+                        }
+                        if cfg.storage_api_key.trim().is_empty() {
+                            cfg.storage_api_key = DEFAULT_STORAGE_API_KEY.to_string();
+                        }
+                    }
                     return cfg;
                 }
             }
