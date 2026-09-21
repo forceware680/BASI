@@ -651,13 +651,21 @@ pub async fn get_bukti_base64(app: tauri::AppHandle, db: &PgPool, id: String) ->
     let mime = mime_of(&fp_norm).unwrap_or("application/octet-stream").to_string();
     let cfg = crate::config::load_config(&app);
 
-    // Ambil nama file asli
-    let fname = row.1.filter(|s| !s.trim().is_empty()).unwrap_or_else(|| {
-        std::path::Path::new(&fp_norm)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default()
-    });
+    // Nama file yang benar-benar tersimpan di storage = segmen terakhir file_path.
+    // File API (server) menyimpan dengan prefix timestamp unik (mis.
+    // 1789951434318_simbasi_staging_x.pdf) yang TIDAK ada di kolom file_name,
+    // jadi URL download & cache key harus dibangun dari file_path, bukan file_name.
+    let fname = std::path::Path::new(&fp_norm)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| {
+            row.1
+                .as_ref()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        })
+        .unwrap_or_default();
 
     let cache_dir = std::env::temp_dir().join("simbasi_cache");
     let _ = std::fs::create_dir_all(&cache_dir);
