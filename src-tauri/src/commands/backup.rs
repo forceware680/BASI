@@ -118,82 +118,142 @@ pub async fn create_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option<
     zip.start_file("data.json", options)
         .map_err(|e| format!("Gagal menambahkan data ke arsip. ({e})"))?;
     zip.write_all(&json_bytes)
-        .map_err(|e| format!("Gagal menulis data JSON. ({e})"))?;
+        .map_err(|e| format!("Gagal menulis data JSON. ({e})"))?;    let cfg = crate::config::load_config(&app);
 
-    let cfg = crate::config::load_config(&app);
+    // 6. Kumpulkan dan tambahkan SELURUH file bukti (PDF/Gambar) ke dalam ZIP
+    let mut added_entries = std::collections::HashSet::<String>::new();
+    let mut backed_up_files_count = 0;
 
-    // 6. Tangani berkas bukti sesuai MODE AKTIF
-    if cfg.mode == "offline" {
-        // MODE OFFLINE: Ambil file bukti fisik dari folder %APPDATA%/bukti/ komputer lokal
-        println!("[BACKUP] Mode Offline: Mengambil berkas bukti dari folder lokal...");
-        if let Ok(app_dir) = crate::storage::app_root(&app) {
-            let bukti_dir = app_dir.join("bukti");
-            if bukti_dir.exists() {
-                add_dir_to_zip(&mut zip, &bukti_dir, &bukti_dir, options)?;
-            }
-        }
-    } else if !cfg.storage_api_url.trim().is_empty() {
-        // MODE ONLINE: Unduh seluruh berkas bukti fisik dari File API Service Cloud ke dalam ZIP
-        let base_url = cfg.storage_api_url.trim_end_matches('/');
-        let client = reqwest::Client::new();
-        println!("[BACKUP] Mode Online: Mengunduh berkas scan dari server Cloud: {}", base_url);
+    let app_dir_opt = crate::storage::app_root(&app).ok();
+    let temp_cache_dir = std::env::temp_dir().join("simbasi_cache");
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
 
-        let mut downloaded_count = 0;
-        for k in &backup_data.koreksi_list {
-            if let Some(ref fp) = k.file_path {
-                let fp_norm = fp.replace('\\', "/");
-                let fname = Path::new(&fp_norm)
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_default();
+    for k in &backup_data.koreksi_list {
+        // Ambil nama file dari file_path atau file_name
+        let stored_fname = k.file_path.as_ref().and_then(|fp| {
+            let fp_norm = fp.replace('\\', "/");
+            let name = Path::new(&fp_norm).file_name()?.to_str()?.to_string();
+            if !name.is_empty() { Some(name) } else { None }
+        }).or_else(|| k.file_name.clone()).unwrap_or_default();
 
-                if !fname.is_empty() {
-                    let k_id = &k.id;
-                    let zip_entry_name = format!("bukti/{k_id}/{fname}");
-                    let download_url = format!("{base_url}/api/bukti/{k_id}/{fname}");
+        let mut found_for_this_koreksi = false;
 
-                    let mut req = client.get(&download_url);
-                    if !cfg.storage_api_key.trim().is_empty() {
-                        req = req.header("x-api-key", cfg.storage_api_key.trim());
-                    }
-
-                    match req.send().await {
-                        Ok(resp) => {
-                            if resp.status().is_success() {
-                                if let Ok(bytes) = resp.bytes().await {
-                                    if zip.start_file(&zip_entry_name, options).is_ok()
-                                        && zip.write_all(&bytes).is_ok()
-                                    {
-                                        downloaded_count += 1;
-                                        println!(
-                                            "[BACKUP] Berhasil mengunduh & menambahkan: {} ({} bytes)",
-                                            zip_entry_name,
-                                            bytes.len()
-                                        );
+        // 1. Coba baca seluruh berkas yang ada di folder bukti AppData lokal untuk koreksi ID ini: %APPDATA%/bukti/{k.id}/
+        if let Some(ref app_dir) = app_dir_opt {
+            let k_dir = app_dir.join("bukti").join(&k.id);
+            if k_dir.is_dir() {
+                if let Ok(entries) = fs::read_dir(&k_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_file() {
+                            let entry_fname = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                            if !entry_fname.is_empty() {
+                                let entry_name = format!("bukti/{}/{}", k.id, entry_fname);
+                                if !added_entries.contains(&entry_name) {
+                                    if let Ok(b) = fs::read(&path) {
+                                        if zip.start_file(&entry_name, options).is_ok() && zip.write_all(&b).is_ok() {
+                                            added_entries.insert(entry_name.clone());
+                                            backed_up_files_count += 1;
+                                            found_for_this_koreksi = true;
+                                            println!("[BACKUP] Berhasil menambahkan file bukti lokal: {} ({} bytes)", entry_name, b.len());
+                                        }
                                     }
+                                } else {
+                                    found_for_this_koreksi = true;
                                 }
-                            } else {
-                                eprintln!(
-                                    "[BACKUP WARN] File API mengembalikan status {}: {}",
-                                    resp.status(),
-                                    download_url
-                                );
                             }
-                        }
-                        Err(e) => {
-                            eprintln!("[BACKUP ERROR] Gagal mengunduh {}: {}", download_url, e);
                         }
                     }
                 }
             }
         }
-        println!("[BACKUP] Selesai mengunduh {} berkas dari Cloud Server.", downloaded_count);
+
+        if found_for_this_koreksi || stored_fname.is_empty() {
+            continue;
+        }
+
+        let zip_entry_name = format!("bukti/{}/{}", k.id, stored_fname);
+        if added_entries.contains(&zip_entry_name) {
+            continue;
+        }
+
+        let mut file_bytes: Option<Vec<u8>> = None;
+
+        // 2. Coba baca langsung dari k.file_path jika merupakan path absolut lokal yang valid
+        if let Some(ref fp) = k.file_path {
+            let p = Path::new(fp);
+            if p.is_absolute() && p.exists() {
+                if let Ok(b) = fs::read(p) {
+                    file_bytes = Some(b);
+                }
+            }
+        }
+
+        // 3. Coba baca dari folder cache lokal simbasi_cache
+        if file_bytes.is_none() {
+            let cached_file = temp_cache_dir.join(format!("{}_{}", k.id, stored_fname));
+            if cached_file.exists() {
+                if let Ok(b) = fs::read(&cached_file) {
+                    file_bytes = Some(b);
+                }
+            }
+        }
+
+        // 4. Jika belum ditemukan dan server File API dikonfigurasi, unduh dari Cloud
+        if file_bytes.is_none() && !cfg.storage_api_url.trim().is_empty() {
+            let base_url = cfg.storage_api_url.trim_end_matches('/');
+            let download_url = format!("{base_url}/api/bukti/{}/{}", k.id, stored_fname);
+
+            let mut req = client.get(&download_url);
+            if !cfg.storage_api_key.trim().is_empty() {
+                req = req.header("x-api-key", cfg.storage_api_key.trim());
+            }
+
+            if let Ok(resp) = req.send().await {
+                if resp.status().is_success() {
+                    if let Ok(bytes) = resp.bytes().await {
+                        file_bytes = Some(bytes.to_vec());
+                    }
+                }
+            }
+        }
+
+        // Masukkan file ke zip jika bytes ditemukan
+        if let Some(bytes) = file_bytes {
+            if zip.start_file(&zip_entry_name, options).is_ok() && zip.write_all(&bytes).is_ok() {
+                added_entries.insert(zip_entry_name.clone());
+                backed_up_files_count += 1;
+                println!("[BACKUP] Berhasil menambahkan file bukti dari cache/cloud: {} ({} bytes)", zip_entry_name, bytes.len());
+            }
+        }
     }
+
+    // 7. Salin juga seluruh sisa file di folder %APPDATA%/bukti jika ada file yang belum terindeks
+    if let Some(ref app_dir) = app_dir_opt {
+        let bukti_dir = app_dir.join("bukti");
+        if bukti_dir.exists() {
+            add_dir_to_zip(&mut zip, &bukti_dir, &bukti_dir, options, &mut added_entries)?;
+        }
+    }
+
+    println!("[BACKUP] Selesai menambahkan {} berkas scan bukti ke dalam file arsip.", backed_up_files_count);
 
     zip.finish()
         .map_err(|e| format!("Gagal menyelesaikan pembuatan arsip backup. ({e})"))?;
 
-    Ok(Some(target_path.to_string_lossy().to_string()))
+    let summary_msg = format!(
+        "{}\n(Memuat {} akun pengguna, {} master OPD, {} data BA Koreksi, dan {} berkas fisik scan bukti)",
+        target_path.to_string_lossy(),
+        backup_data.users_list.len(),
+        backup_data.opd_list.len(),
+        backup_data.koreksi_list.len(),
+        backed_up_files_count
+    );
+
+    Ok(Some(summary_msg))
 }
 
 fn add_dir_to_zip<W: Write + std::io::Seek>(
@@ -201,20 +261,24 @@ fn add_dir_to_zip<W: Write + std::io::Seek>(
     base_dir: &Path,
     current_dir: &Path,
     options: SimpleFileOptions,
+    added_entries: &mut std::collections::HashSet<String>,
 ) -> Result<(), String> {
     if let Ok(entries) = fs::read_dir(current_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                add_dir_to_zip(zip, base_dir, &path, options)?;
+                add_dir_to_zip(zip, base_dir, &path, options, added_entries)?;
             } else if path.is_file() {
                 if let Ok(rel_path) = path.strip_prefix(base_dir) {
                     let zip_entry_name = format!("bukti/{}", rel_path.to_string_lossy().replace('\\', "/"));
-                    if let Ok(mut f) = File::open(&path) {
-                        let mut buffer = Vec::new();
-                        if f.read_to_end(&mut buffer).is_ok() {
-                            let _ = zip.start_file(zip_entry_name, options);
-                            let _ = zip.write_all(&buffer);
+                    if !added_entries.contains(&zip_entry_name) {
+                        if let Ok(mut f) = File::open(&path) {
+                            let mut buffer = Vec::new();
+                            if f.read_to_end(&mut buffer).is_ok() {
+                                let _ = zip.start_file(&zip_entry_name, options);
+                                let _ = zip.write_all(&buffer);
+                                added_entries.insert(zip_entry_name);
+                            }
                         }
                     }
                 }
@@ -467,7 +531,6 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
     }
 
     // 5. Ekstrak seluruh file bukti dari zip ke {app_data_dir}/bukti/
-    let mut extracted_files: Vec<(String, std::path::PathBuf)> = Vec::new();
     for i in 0..archive.len() {
         if let Ok(mut zip_file) = archive.by_index(i) {
             let name = zip_file.name().replace('\\', "/");
@@ -479,54 +542,123 @@ pub async fn restore_backup(app: tauri::AppHandle, db: &PgPool) -> Result<Option
                 }
                 if let Ok(mut outfile) = File::create(&out_path) {
                     let _ = std::io::copy(&mut zip_file, &mut outfile);
-                    extracted_files.push((rel, out_path));
                 }
             }
         }
     }
     drop(archive);
 
-    // 6. Jika mode online, upload berkas yang baru diekstrak ke File API Service Cloud
+    // Nama file kanonik per koreksi dari data.json (sumber acuan viewer/DB).
+    let canonical_fname = |k: &KoreksiRow| -> Option<String> {
+        k.file_name
+            .as_deref()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .and_then(|s| {
+                Path::new(&s)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .filter(|n| !n.is_empty())
+            })
+    };
+
+    // 5b. Normalisasi nama file fisik agar identik dengan file_name di database.
+    // Arsip backup menyimpan file dengan NAMA PENYIMPANAN (mis. {timestamp}_{nama}
+    // dari server File API), sedangkan database memakai nama asli (file_name).
+    // Jika tidak disamakan, viewer tidak menemukan file dan gagal dengan
+    // "The system cannot find the file specified" (os error 2) saat restore ke lokal/offline.
+    for k in &backup_data.koreksi_list {
+        let Some(fname) = canonical_fname(k) else {
+            continue;
+        };
+        let k_dir = bukti_root.join(&k.id);
+        let target = k_dir.join(&fname);
+        if target.exists() {
+            continue;
+        }
+        // 1) Prioritas: file yang persis nama referensinya ada di data.json (file_path).
+        // 2) Fallback: file terbaru di folder koreksi ini.
+        let stored_fname = k
+            .file_path
+            .as_deref()
+            .map(|fp| {
+                Path::new(&fp.replace('\\', "/"))
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+            })
+            .flatten()
+            .filter(|n| !n.is_empty());
+        let source = stored_fname
+            .map(|n| k_dir.join(&n))
+            .filter(|p| p.exists())
+            .or_else(|| {
+                fs::read_dir(&k_dir)
+                    .map(|entries| {
+                        entries
+                            .flatten()
+                            .filter(|e| e.path().is_file())
+                            .filter_map(|e| e.metadata().ok().and_then(|m| m.modified().ok()).map(|t| (t, e.path())))
+                            .into_iter()
+                            .max_by_key(|(t, _)| *t)
+                            .map(|(_, p)| p)
+                    })
+                    .unwrap_or(None)
+            });
+        if let Some(source) = source {
+            if fs::rename(&source, &target).is_ok() {
+                println!(
+                    "[RESTORE] Normalisasi nama file: {} -> {}",
+                    source.to_string_lossy(),
+                    target.to_string_lossy()
+                );
+            }
+        }
+    }
+
+    // 6. Jika mode online, upload berkas yang sudah dinormalisasi ke File API Service Cloud
     if cfg.mode == "online" && !cfg.storage_api_url.trim().is_empty() {
-        println!("[RESTORE] Mengunggah {} berkas hasil pemulihan ke Cloud Server...", extracted_files.len());
         let cache_dir = std::env::temp_dir().join("simbasi_cache");
         let _ = std::fs::create_dir_all(&cache_dir);
+        let mut uploaded_count = 0;
 
-        for (rel, path) in extracted_files {
-            let rel_norm = rel.replace('\\', "/");
-            let parts: Vec<&str> = rel_norm.split('/').filter(|s| !s.is_empty()).collect();
-            if parts.len() >= 2 {
-                let k_id = parts[0];
-                let orig_fname = parts[1];
+        for k in &backup_data.koreksi_list {
+            let Some(fname) = canonical_fname(k) else {
+                continue;
+            };
+            let path = bukti_root.join(&k.id).join(&fname);
+            if !path.exists() {
+                continue;
+            }
 
-                // Simpan juga ke cache lokal
-                let _ = std::fs::copy(&path, cache_dir.join(format!("{}_{}", k_id, orig_fname)));
+            // Simpan juga ke cache lokal dengan nama yang sama dengan di database
+            let _ = std::fs::copy(&path, cache_dir.join(format!("{}_{}", k.id, fname)));
 
-                match crate::storage::upload_to_remote_exact(
-                    &cfg.storage_api_url,
-                    &cfg.storage_api_key,
-                    k_id,
-                    &path.to_string_lossy(),
-                )
-                .await {
-                    Ok((remote_path, fname, ftype)) => {
-                        println!("[RESTORE] Sukses mengunggah berkas: {}", remote_path);
-                        let _ = sqlx::query(
-                            "UPDATE koreksi_bmd SET file_path = $1, file_name = $2, file_type = $3 WHERE id = $4::uuid",
-                        )
-                        .bind(&remote_path)
-                        .bind(&fname)
-                        .bind(&ftype)
-                        .bind(k_id)
-                        .execute(db)
-                        .await;
-                    }
-                    Err(e) => {
-                        eprintln!("[RESTORE ERROR] Gagal mengunggah berkas {}: {}", orig_fname, e);
-                    }
+            match crate::storage::upload_to_remote_exact(
+                &cfg.storage_api_url,
+                &cfg.storage_api_key,
+                &k.id,
+                &path.to_string_lossy(),
+            )
+            .await {
+                Ok((remote_path, f_up, ftype)) => {
+                    uploaded_count += 1;
+                    println!("[RESTORE] Sukses mengunggah berkas: {}", remote_path);
+                    let _ = sqlx::query(
+                        "UPDATE koreksi_bmd SET file_path = $1, file_name = $2, file_type = $3 WHERE id = $4::uuid",
+                    )
+                    .bind(&remote_path)
+                    .bind(&f_up)
+                    .bind(&ftype)
+                    .bind(&k.id)
+                    .execute(db)
+                    .await;
+                }
+                Err(e) => {
+                    eprintln!("[RESTORE ERROR] Gagal mengunggah berkas {}: {}", fname, e);
                 }
             }
         }
+        println!("[RESTORE] Mengunggah {} berkas hasil pemulihan ke Cloud Server.", uploaded_count);
     }
 
     let user_msg = if !backup_data.users_list.is_empty() {

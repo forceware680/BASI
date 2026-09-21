@@ -31,6 +31,7 @@ const PRESET_LOCAL_DB = "postgresql://postgres:postgres@localhost:5432/sim_ba_ko
 const PRESET_ONLINE_DB =
   "postgres://postgres:XSRMfNGXXAd7aRvTyanmMGbcRLIVDmxB4nf5CwFEU4g5j7VYKTvVxEWMcvRsT8bH@45.198.155.126:27492/sim_ba_koreksi";
 const PRESET_ONLINE_STORAGE = "http://simbasi.bpkad.web.id";
+const PRESET_ONLINE_STORAGE_KEY = "simbasi_secret_key_bpkad_magelang";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -104,6 +105,7 @@ export function SettingsDialog({ open, onClose, onSaved }: SettingsDialogProps) 
         mode: "online",
         database_url: prev.database_url.includes("localhost") ? PRESET_ONLINE_DB : prev.database_url,
         storage_api_url: prev.storage_api_url || PRESET_ONLINE_STORAGE,
+        storage_api_key: prev.storage_api_key || PRESET_ONLINE_STORAGE_KEY,
       }));
     }
     setDbTestResult(null);

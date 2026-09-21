@@ -61,7 +61,7 @@ function sanitizeFileName(name) {
 // Konfigurasi Multer untuk penyimpanan disk
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const koreksiId = req.body.koreksi_id || req.query.koreksi_id || 'general';
+    const koreksiId = req.headers['x-koreksi-id'] || req.query.koreksi_id || req.body.koreksi_id || 'general';
     const sanitizedId = sanitizeFileName(koreksiId);
     const targetDir = path.join(UPLOAD_DIR, sanitizedId);
 
@@ -72,9 +72,9 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const keepName =
-      req.body.keep_name === 'true' ||
+      req.headers['x-keep-name'] === 'true' ||
       req.query.keep_name === 'true' ||
-      req.headers['x-keep-name'] === 'true';
+      req.body.keep_name === 'true';
     const cleanName = sanitizeFileName(file.originalname);
     if (keepName) {
       cb(null, cleanName);
