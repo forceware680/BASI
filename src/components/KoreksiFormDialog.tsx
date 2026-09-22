@@ -47,13 +47,15 @@ const btnSecondary =
 function autoFormatNomor(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return "";
-  if (/^\d+$/.test(trimmed)) {
+  // Nomor tengah bisa murni angka (2377) atau punya desimal titik (2377.1)
+  if (/^\d+(\.\d+)?$/.test(trimmed)) {
     return `000.2.3.2/${trimmed}/440`;
   }
-  if (/^\d+\/\d+$/.test(trimmed)) {
+  // Nomor dua bagian 129/1992 (masing-masing boleh punya desimal titik)
+  if (/^\d+(\.\d+)?\/\d+(\.\d+)?$/.test(trimmed)) {
     return `000.2.3.2/${trimmed}`;
   }
-  if (/^000\.2\.3\.2\/\d+$/.test(trimmed)) {
+  if (/^000\.2\.3\.2\/\d+(\.\d+)?$/.test(trimmed)) {
     return `${trimmed}/440`;
   }
   return trimmed;
@@ -278,7 +280,7 @@ export function KoreksiFormDialog({
           <Field
             label="No. Surat TU"
             error={errors.no_tu}
-            hint="Ketik nomor tengah (contoh: 1991), otomatis terformat 000.2.3.2/1991/440 saat tekan Tab."
+            hint="Ketik nomor tengah (contoh: 1991 atau 2377.1), otomatis terformat 000.2.3.2/1991/440 saat tekan Tab."
           >
             <div className="relative">
               <input
@@ -286,7 +288,7 @@ export function KoreksiFormDialog({
                 value={fields.no_tu}
                 onChange={(e) => update({ no_tu: e.target.value })}
                 onBlur={handleBlurNoTu}
-                placeholder="Contoh: 1991 atau 000.2.3.2/1991/440"
+                placeholder="Contoh: 1991, 2377.1, atau 000.2.3.2/1991/440"
                 className={inputCls}
                 maxLength={100}
               />
