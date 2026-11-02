@@ -86,7 +86,7 @@ export function EkspedisiPrintSheet({
               Pemerintah Kota Magelang
             </div>
             <div className="text-base font-extrabold uppercase tracking-wide">
-              Badan Pengelolaan Keuangan dan Aset Daerah
+              Badan Pengelola Keuangan dan Aset Daerah
             </div>
             <div className="text-xs font-semibold text-slate-800">
               Bidang Aset

@@ -242,7 +242,7 @@ function MainApp() {
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate hidden xl:block">
-                Kasubid Penatausahaan Aset — Badan Pengelolaan Keuangan dan Aset Daerah
+                Kasubid Penatausahaan Aset — Badan Pengelola Keuangan dan Aset Daerah
               </p>
             </div>
           </div>
