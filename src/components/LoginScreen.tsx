@@ -65,7 +65,7 @@ export function LoginScreen() {
               Pemerintah Kota Magelang
             </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-              Badan Pengelolaan Keuangan dan Aset Daerah
+              Badan Pengelola Keuangan dan Aset Daerah
             </div>
           </div>
         </div>
@@ -179,7 +179,7 @@ export function LoginScreen() {
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
               Sistem Aktif & Terlindungi
             </span>
-            <span className="font-mono text-[10px] text-slate-400">v1.0.9</span>
+            <span className="font-mono text-[10px] text-slate-400">v1.0.10</span>
           </div>
         </div>
       </main>

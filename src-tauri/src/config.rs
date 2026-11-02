@@ -1,4 +1,4 @@
-// config.rs — Pengelolaan konfigurasi aplikasi (Mode Offline/Online, URL Database, & File API).
+// config.rs — Pengelola konfigurasi aplikasi (Mode Offline/Online, URL Database, & File API).
 
 use serde::{Deserialize, Serialize};
 use std::fs;

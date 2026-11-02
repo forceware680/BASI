@@ -96,7 +96,7 @@ export function RekapitulasiPrintSheet({
                 Pemerintah Kota Magelang
               </div>
               <div className="text-sm font-extrabold uppercase tracking-wide">
-                Badan Pengelolaan Keuangan dan Aset Daerah
+                Badan Pengelola Keuangan dan Aset Daerah
               </div>
               <div className="text-[9pt] font-semibold text-slate-800">
                 Bidang Aset
